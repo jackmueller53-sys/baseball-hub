@@ -1,0 +1,49 @@
+name: Fetch 2026 Live Data
+
+on:
+  schedule:
+    # Runs daily at 8:00 AM UTC (4 AM ET) — after west coast games finish
+    - cron: '0 8 * * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: write  # Needed to commit data files back to repo
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch 2026 season data
+        run: node scripts/fetch-2026.js
+
+      - name: Check for data changes
+        id: check
+        run: |
+          git add data/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No data changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Data files updated:"
+            git diff --cached --stat
+          fi
+
+      - name: Commit and push updated data
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Auto-update 2026 data — $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          Fetched from FanGraphs API + Baseball Savant.
+          Triggered by: ${{ github.event_name }}"
+          git push

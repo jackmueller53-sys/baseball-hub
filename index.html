@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseball Hub — Advanced Stats & Stuff+ Leaderboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="js/data.js"></script>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- ═══ TOOLTIP (shared, floats over everything) ═══════════════════════════ -->
+<div id="dot-tip">
+  <div class="dt-head">
+    <div class="dt-name" id="dt-name"></div>
+    <div class="dt-meta"><span class="dt-team" id="dt-team"></span><span id="dt-pos"></span></div>
+  </div>
+  <div class="dt-stats" id="dt-stats"></div>
+  <div class="dt-ax" id="dt-ax"></div>
+</div>
+
+<!-- ═══ PLAYER CARD MODAL (shared) ══════════════════════════════════════════ -->
+<div id="pc-overlay">
+  <button class="pc-close" onclick="closePcOverlay()">&#10005;</button>
+  <div id="pc-overlay-content"></div>
+</div>
+
+<div class="page">
+
+<!-- ═══ UNIFIED HUB HEADER ═══════════════════════════════════════════════════ -->
+<div id="hub-header">
+  <div class="hub-hdr">
+    <a class="hub-logo" href="#">
+      <div class="hub-logo-mark">&#9918;</div>
+      <div>
+        <span class="hub-logo-title">Baseball Hub</span>
+        <span class="hub-logo-sub">by Jack Mueller</span>
+      </div>
+    </a>
+    <div class="hub-divider"></div>
+    <nav class="hub-nav" id="hub-nav">
+      <button class="hub-tab active" data-app="explorer" onclick="switchApp('explorer',this)">
+        <span class="hub-tab-icon">📊</span> Stats Explorer
+      </button>
+      <button class="hub-tab" data-app="stuffplus" onclick="switchApp('stuffplus',this)">
+        <span class="hub-tab-icon">🔬</span> Stuff+ Leaderboard
+      </button>
+    </nav>
+
+    <!-- Explorer sub-controls (visible in explorer mode) -->
+    <div id="sub-explorer-controls" style="display:flex;align-items:center;gap:12px;flex:1;overflow:hidden">
+      <div class="hub-divider"></div>
+      <div class="season-tabs" style="flex-shrink:0">
+        <button class="stab active" id="stab-2025" onclick="setSeason(2025)">
+          2025<small>FINAL</small>
+        </button>
+        <button class="stab" id="stab-2026" onclick="setSeason(2026)">
+          2026<small>LIVE</small>
+        </button>
+      </div>
+      <div class="player-tabs" style="flex-shrink:0">
+        <button class="ptab active" id="ptab-hit" data-mode="hitters" onclick="setModeBtn(this)">&#127947; Hitters</button>
+        <button class="ptab" id="ptab-pit" data-mode="pitchers" onclick="setModeBtn(this)">&#9918; Pitchers</button>
+      </div>
+      <div class="player-search-wrap">
+        <input type="text" class="player-search" id="player-search" placeholder="Search any player..." autocomplete="off">
+        <div class="ps-dropdown" id="ps-dropdown"></div>
+      </div>
+      <div class="src-pills" style="flex-shrink:0">
+        <a class="src-pill pill-fg" href="https://www.fangraphs.com" target="_blank"><span class="pill-dot"></span>FanGraphs</a>
+        <a class="src-pill pill-sv" href="https://baseballsavant.mlb.com" target="_blank"><span class="pill-dot"></span>Savant</a>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" title="Refresh 2026 data" style="display:none">&#8635;</button>
+        <span class="s-badge badge-final" id="s-badge">2025 FINAL</span>
+      </div>
+    </div>
+
+    <!-- Stuff+ sub-controls (visible in stuffplus mode) -->
+    <div id="sub-stuffplus-controls" style="display:none;align-items:center;gap:12px;flex:1">
+      <div class="hub-divider"></div>
+      <div class="season-tabs" id="sp-season-tabs"></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span class="s-badge badge-model">100-Centered Scale</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FETCH PROGRESS BAR (Stats Explorer only) ══════════════════════════════ -->
+<div id="fetch-wrap" class="hidden">
+  <div id="fetch-bar"><div id="fetch-fill"></div></div>
+  <div id="fetch-row">
+    <span class="fetch-dot"></span>
+    <span id="fetch-msg">Fetching live stats&hellip;</span>
+    <span id="fetch-err"></span>
+  </div>
+</div>
+
+<!-- ═══ SOURCE INFO BAR (Stats Explorer) ═════════════════════════════════════ -->
+<div class="src-bar" id="explorer-src-bar">
+  <div class="src-bar-inner">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-fg">FanGraphs</span>
+      <span class="src-list">wRC+, WAR, wOBA, FIP, xFIP, K%, BB%, BABIP, ISO, SwStr%, GB%, LOB%</span>
+    </div>
+    <div class="src-div"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-sv">Baseball Savant</span>
+      <span class="src-list">xwOBA, xBA, xSLG, xERA, Barrel%, Avg EV, Hard Hit%, Whiff%, Sprint Speed</span>
+    </div>
+    <span id="meta-txt">79 hitters &nbsp;&middot;&nbsp; 66 pitchers</span>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP: STATS EXPLORER
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="app-explorer" class="app-section app-visible">
+  <div class="app-explorer-inner">
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-lbl">X Axis</div>
+        <div class="sel-wrap"><select id="x-sel" onchange="render()"></select></div>
+        <div class="ax-meta"><span id="x-src-tag"></span><span class="ax-desc" id="x-desc"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Y Axis</div>
+        <div class="sel-wrap"><select id="y-sel" onchange="render()"></select></div>
+        <div class="ax-meta"><span id="y-src-tag"></span><span class="ax-desc" id="y-desc"></span></div>
+      </div>
+      <div class="card" id="date-card" style="display:none">
+        <div class="card-lbl">Time Range</div>
+        <div class="date-presets">
+          <button class="dp-btn dp-active" data-range="full" onclick="setDatePreset(this)">Full Season</button>
+          <button class="dp-btn" data-range="30" onclick="setDatePreset(this)">Last 30d</button>
+          <button class="dp-btn" data-range="14" onclick="setDatePreset(this)">Last 14d</button>
+          <button class="dp-btn" data-range="7" onclick="setDatePreset(this)">Last 7d</button>
+        </div>
+        <div class="date-custom">
+          <div class="filter-row" style="margin-bottom:6px">
+            <label class="filter-lbl">From</label>
+            <input type="date" id="date-from" onchange="setCustomDateRange()">
+          </div>
+          <div class="filter-row" style="margin-bottom:0">
+            <label class="filter-lbl">To</label>
+            <input type="date" id="date-to" onchange="setCustomDateRange()">
+          </div>
+        </div>
+        <div class="date-note" id="date-note">Savant xStats use full-season data</div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Filters</div>
+        <div class="filter-row">
+          <label class="filter-lbl">Search</label>
+          <div class="srch-wrap"><input type="text" id="srch" placeholder="Name or team&hellip;" oninput="render()"></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Team</label>
+          <div class="sel-wrap"><select id="tm-sel" onchange="render()"><option>All Teams</option></select></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Age <span id="age-disp" style="color:var(--fg2)">18&ndash;45</span></label>
+          <div class="age-pair">
+            <input type="number" id="age-mn" value="18" min="18" max="45" onchange="render();updAge()">
+            <input type="number" id="age-mx" value="45" min="18" max="45" onchange="render();updAge()">
+          </div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl" id="min-lbl">Min AB</label>
+          <input type="number" id="min-v" value="0" min="0" max="700" step="10" onchange="render()">
+        </div>
+        <div class="filter-row" id="role-row" style="display:none">
+          <label class="filter-lbl">Role</label>
+          <div class="sel-wrap">
+            <select id="role-sel" onchange="render()">
+              <option value="all">All</option>
+              <option value="SP">Starters</option>
+              <option value="RP">Relievers</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="count-card">
+          <div class="count-num" id="p-cnt">0</div>
+          <div class="count-lbl">Players Shown</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Display</div>
+        <div class="toggle-row" onclick="togNames()"><span class="toggle-lbl">Player Names</span><div class="tog" id="tog-n"></div></div>
+        <div class="toggle-row" onclick="togQuads()" style="margin-top:4px"><span class="toggle-lbl">Quadrant Labels</span><div class="tog on" id="tog-q"></div></div>
+      </div>
+      <div class="card"><div class="card-lbl">Key</div><div id="legend"></div></div>
+    </aside>
+
+    <main class="main">
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title" id="c-title">wRC+ <em>vs</em> Barrel%</div>
+            <div class="chart-sub" id="c-sub"></div>
+          </div>
+          <div class="chart-src-row" id="c-src-row"></div>
+        </div>
+        <div class="chart-body"><svg class="scatter" id="svg-plot" viewBox="0 0 900 470"></svg></div>
+        <div class="chart-footer">
+          <div class="toggle-row" onclick="togNames()" style="cursor:pointer;gap:7px">
+            <div class="tog" id="tog-n2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Names</span>
+          </div>
+          <div class="toggle-row" onclick="togQuads()" style="cursor:pointer;gap:7px">
+            <div class="tog on" id="tog-q2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Quadrants</span>
+          </div>
+          <div class="cf-hint">Hover dots for stats &nbsp;&middot;&nbsp; Click dots or table rows for player cards</div>
+        </div>
+      </div>
+
+      <div class="tbl-card">
+        <div class="tbl-head">
+          <div class="tbl-title">Leaderboard <span id="tbl-mode" style="color:var(--fg2);font-weight:400">&mdash; Hitters</span></div>
+          <div class="tbl-note" id="tbl-note">Sorted by Y-axis &darr;</div>
+        </div>
+        <div class="tbl-wrap"><table><thead id="t-head"></thead><tbody id="t-body"></tbody></table></div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="explorer-footer">
+    <div class="footer-grid">
+      <div>
+        <div class="ft">Data Sources</div>
+        <div class="fi"><span class="fb fb-fg">FanGraphs</span>
+          <div class="fn">wRC+, WAR, wOBA, FIP, xFIP, K%, BB%, SwStr%, BABIP, ISO, GB%, LOB%<br>
+            <a href="https://www.fangraphs.com/leaders/major-league" target="_blank">fangraphs.com</a> &mdash; Major League Leaderboards API</div></div>
+        <div class="fi"><span class="fb fb-sv">Savant</span>
+          <div class="fn">xwOBA, xBA, xSLG, xERA, Barrel%, Avg EV, Hard Hit%, Whiff%, Sprint Speed<br>
+            <a href="https://baseballsavant.mlb.com" target="_blank">baseballsavant.mlb.com</a> &mdash; Expected Stats &amp; Sprint Speed leaderboards</div></div>
+      </div>
+      <div>
+        <div class="ft">Methodology</div>
+        <div class="fn">
+          <b>2025:</b> Embedded final-season data &mdash; instant, no network needed<br>
+          <b>2026:</b> Fetched live from FanGraphs + Savant via multi-proxy failover on tab switch<br>
+          <b>Qualification:</b> Progressive thresholds based on days into season<br>
+          <b>Date range:</b> Full season or rolling 7/14/30-day filter &middot; Savant always full season<br>
+          <b>Caching:</b> 15-min localStorage cache per date range with auto-refresh<br>
+          <b>Origin (0,0):</b> Filtered group average &mdash; quadrant colour = perf vs peers<br>
+          <b>Role:</b> SP if GS/G &ge; 50%, else RP
+        </div>
+      </div>
+      <div>
+        <div class="ft">Disclaimer</div>
+        <div class="fn">All statistics &copy; <a href="https://www.fangraphs.com" target="_blank">FanGraphs LLC</a>
+          and <a href="https://www.mlb.com" target="_blank">MLB Advanced Media, L.P.</a><br>
+          For personal and educational use only.
+        </div>
+      </div>
+    </div>
+  </footer>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════
+     APP: STUFF+ LEADERBOARD
+     ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="app-stuffplus" class="app-section">
+  <div class="sp-app">
+    <div class="controls">
+      <div class="srch-wrap-sp">
+        <input type="text" id="search" placeholder="Search pitcher name or team...">
+      </div>
+      <span class="ctrl-lbl">Min Pitches</span>
+      <input type="number" class="pitch-min" id="min-pitches" value="0" step="50">
+      <span class="ctrl-lbl">View</span>
+      <select class="ctrl-sel" id="view-mode">
+        <option value="full">Full View</option>
+        <option value="model">Model Only</option>
+        <option value="comparison">Model vs FG</option>
+      </select>
+      <span class="count-badge" id="count-badge"><b>0</b> pitchers</span>
+    </div>
+
+    <!-- Grade Distribution Histogram -->
+    <div class="hist-card">
+      <div class="hist-head">
+        <div class="hist-title">Stuff+ Grade Distribution<em id="hist-season-label"></em></div>
+        <div class="src-pills">
+          <span class="src-pill pill-model"><span class="pill-dot"></span>Custom Model</span>
+        </div>
+      </div>
+      <div class="hist-body">
+        <svg class="hist-svg" id="hist-svg" viewBox="0 0 800 200"></svg>
+        <div class="hist-stats" id="hist-stats"></div>
+      </div>
+    </div>
+
+    <div class="sp-tbl-card">
+      <div class="tbl-title-row">
+        <div>
+          <div class="sp-tbl-title">Pitcher Stuff+ Grades <em>— Model Output</em></div>
+          <div class="tbl-sub">Whiff-probability model trained on <b>2020-2025 Statcast</b> pitch-level data. Grades on <b>100-centered scale</b> (100 = avg, 15-pt std dev).</div>
+        </div>
+        <div class="src-pills">
+          <span class="src-pill pill-model"><span class="pill-dot"></span>Custom Model</span>
+          <span class="src-pill pill-fg"><span class="pill-dot"></span>FanGraphs</span>
+          <span class="src-pill pill-sv"><span class="pill-dot"></span>Statcast</span>
+        </div>
+      </div>
+      <div class="legend-bar">
+        <span class="legend-item"><span class="leg-swatch leg-80"></span>130+ Elite</span>
+        <span class="legend-item"><span class="leg-swatch leg-70"></span>115+ Plus-Plus</span>
+        <span class="legend-item"><span class="leg-swatch leg-60"></span>107+ Plus</span>
+        <span class="legend-item"><span class="leg-swatch leg-50"></span>100 Average</span>
+        <span class="legend-item"><span class="leg-swatch leg-40"></span>85-92 Below Avg</span>
+        <span class="legend-item"><span class="leg-swatch leg-30"></span>&lt;70 Well Below</span>
+        <span style="margin-left:auto" class="legend-item">
+          <span style="width:8px;height:4px;border-radius:2px;background:#B91C1C;display:inline-block"></span>FB
+          <span style="width:8px;height:4px;border-radius:2px;background:#047857;display:inline-block;margin-left:4px"></span>BRK
+          <span style="width:8px;height:4px;border-radius:2px;background:#1D4ED8;display:inline-block;margin-left:4px"></span>OFF
+        </span>
+      </div>
+      <div class="sp-tbl-wrap">
+        <div id="loading" class="sp-loading">
+          <div class="loading-text">Loading leaderboard data...</div>
+          <div class="loading-bar"><div class="loading-fill"></div></div>
+        </div>
+        <table class="lb" id="lb" style="display:none">
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="sp-tbl-footer">
+        <span class="tbl-footer-text">Sources: Custom XGBoost whiff-probability model (pitch-type-specific) &middot; FanGraphs &middot; Baseball Savant</span>
+        <span class="tbl-footer-text" style="margin-left:auto">Grades: 100-centered scale (100 = avg, std = 15), probit-normalized per season</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /.page -->
+
+
+<script src="js/navigation.js"></script>
+<script src="js/explorer.js"></script>
+<script src="js/leaderboard.js"></script>
+<script src="js/init.js"></script>
+</body>
+</html>
