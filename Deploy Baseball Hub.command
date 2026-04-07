@@ -1,20 +1,13 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════
-# Baseball Hub — One-Click Deployment (v2 — bulletproof)
+# Baseball Hub — One-Click Deployment (v3 — smart update)
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # DOUBLE-CLICK THIS FILE to deploy Baseball Hub to GitHub Pages.
 #
-# This script handles EVERYTHING automatically:
-#   1. Installs GitHub CLI (if missing)
-#   2. Authenticates with GitHub (if needed)
-#   3. Deletes any broken previous repo
-#   4. Starts a fresh git repo in THIS folder
-#   5. Commits all project files
-#   6. Creates a new public GitHub repository
-#   7. Pushes all code to main branch
-#   8. Enables GitHub Pages via Actions
-#   9. Waits for deployment, then opens your live site
+# Smart behavior:
+#   - First time: creates repo, pushes code, enables Pages, triggers data fetch
+#   - Subsequent: pushes updates, triggers data fetch workflow
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Always cd into the folder where this script lives ──
@@ -31,7 +24,7 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-step() { echo ""; echo -e "${BLUE}[$1/9]${NC} ${BOLD}$2${NC}"; }
+step() { echo ""; echo -e "${BLUE}[$1/$TOTAL_STEPS]${NC} ${BOLD}$2${NC}"; }
 ok()   { echo -e "  ${GREEN}✅ $1${NC}"; }
 info() { echo -e "  ${YELLOW}ℹ️  $1${NC}"; }
 fail() { echo -e "  ${RED}❌ $1${NC}"; echo ""; echo "Press any key to close..."; read -n1; exit 1; }
@@ -42,11 +35,16 @@ echo "════════════════════════�
 echo ""
 echo -e "  Working directory: ${BOLD}$SCRIPT_DIR${NC}"
 
-# ── Sanity check: make sure index.html exists in this folder ──
+# ── Sanity check ──
 if [ ! -f "$SCRIPT_DIR/index.html" ]; then
-    fail "index.html not found in $SCRIPT_DIR — make sure this script is inside the baseball-hub project folder."
+    fail "index.html not found in $SCRIPT_DIR"
 fi
-ok "Project files found (index.html, css/, js/)"
+
+# ══════════════════════════════════════════════════════════════════════════
+# Detect mode: fresh deploy vs update
+# ══════════════════════════════════════════════════════════════════════════
+FRESH_DEPLOY=false
+TOTAL_STEPS=7
 
 # ══════════════════════════════════════════════════════════════════════════
 # STEP 1: Install GitHub CLI
@@ -57,7 +55,6 @@ if command -v gh &> /dev/null; then
     ok "GitHub CLI found ($(gh --version | head -1))"
 else
     info "GitHub CLI not found — installing now..."
-
     if [[ "$OSTYPE" == "darwin"* ]]; then
         if command -v brew &> /dev/null; then
             brew install gh
@@ -69,30 +66,13 @@ else
             fi
             brew install gh
         fi
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v apt-get &> /dev/null; then
-            (type -p wget >/dev/null || sudo apt-get install wget -y) \
-            && sudo mkdir -p -m 755 /etc/apt/keyrings \
-            && out=$(mktemp) && wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            && cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-            && sudo apt-get update && sudo apt-get install gh -y
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install 'dnf-command(config-manager)' -y
-            sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
-            sudo dnf install gh -y
-        else
-            fail "Unsupported Linux distro. Install gh manually: https://cli.github.com"
-        fi
     else
-        fail "Unsupported OS ($OSTYPE). Install gh manually: https://cli.github.com"
+        fail "Install gh manually: https://cli.github.com"
     fi
-
     if ! command -v gh &> /dev/null; then
         fail "GitHub CLI installation failed. Install manually: https://cli.github.com"
     fi
-    ok "GitHub CLI installed successfully"
+    ok "GitHub CLI installed"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -105,193 +85,157 @@ if gh auth status &> /dev/null 2>&1; then
     ok "Authenticated as: $GH_USER"
 else
     info "Not logged in — launching GitHub login..."
-    echo ""
-    echo "  A browser window will open. Follow the prompts to sign in."
-    echo ""
     gh auth login --web --git-protocol https
     GH_USER=$(gh api user --jq '.login')
     ok "Authenticated as: $GH_USER"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# STEP 3: Delete broken previous repo (if it exists)
+# STEP 3: Check if repo exists — determines fresh vs update path
 # ══════════════════════════════════════════════════════════════════════════
-step 3 "Cleaning up any previous broken deploy..."
+step 3 "Checking repository status..."
 
+REPO_EXISTS=false
 if gh repo view "$GH_USER/$REPO_NAME" &> /dev/null 2>&1; then
-    info "Deleting old repo $GH_USER/$REPO_NAME to start fresh..."
-    gh repo delete "$GH_USER/$REPO_NAME" --yes 2>/dev/null
-    if [ $? -eq 0 ]; then
-        ok "Old repo deleted"
-        sleep 3  # Give GitHub a moment to process
+    REPO_EXISTS=true
+    HAS_INDEX=$(gh api repos/"$GH_USER"/"$REPO_NAME"/contents/index.html --jq '.name' 2>/dev/null || echo "")
+    if [ "$HAS_INDEX" = "index.html" ]; then
+        ok "Existing repo found with project files — will update"
     else
-        info "Could not auto-delete. You may need to delete it manually at:"
-        info "https://github.com/$GH_USER/$REPO_NAME/settings (scroll to Danger Zone)"
-        echo ""
-        echo "  After deleting, press any key to continue..."
-        read -n1
+        info "Repo exists but appears broken — will recreate"
+        gh repo delete "$GH_USER/$REPO_NAME" --yes 2>/dev/null
+        sleep 3
+        REPO_EXISTS=false
+        FRESH_DEPLOY=true
     fi
 else
-    ok "No previous repo found — starting fresh"
+    ok "No existing repo — will create fresh"
+    FRESH_DEPLOY=true
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# STEP 4: Fresh git init in THIS folder
+# STEP 4: Set up git
 # ══════════════════════════════════════════════════════════════════════════
-step 4 "Initializing fresh git repository..."
+step 4 "Setting up git..."
 
-# Remove any existing .git to avoid inheriting a broken state
-if [ -d .git ]; then
-    rm -rf .git
-    info "Removed stale .git directory"
-fi
-
-git init
-git checkout -b main
-
-# Configure git user
 GH_EMAIL=$(gh api user --jq '.email // empty' 2>/dev/null || echo "")
 GH_NAME=$(gh api user --jq '.name // .login' 2>/dev/null || echo "$GH_USER")
 if [ -z "$GH_EMAIL" ]; then
     GH_EMAIL="${GH_USER}@users.noreply.github.com"
 fi
-git config user.email "$GH_EMAIL"
-git config user.name "$GH_NAME"
 
-ok "Git initialized (branch: main, user: $GH_NAME)"
+if [ "$FRESH_DEPLOY" = true ]; then
+    # Clean start
+    rm -rf .git 2>/dev/null
+    git init
+    git checkout -b main
+    git config user.email "$GH_EMAIL"
+    git config user.name "$GH_NAME"
+    ok "Fresh git initialized"
+else
+    # Repo exists — make sure we have the remote set up
+    if [ ! -d .git ]; then
+        git init
+        git checkout -b main
+    fi
+    git config user.email "$GH_EMAIL"
+    git config user.name "$GH_NAME"
 
-# ══════════════════════════════════════════════════════════════════════════
-# STEP 5: Stage and commit ALL files
-# ══════════════════════════════════════════════════════════════════════════
-step 5 "Committing all project files..."
-
-git add -A
-
-# Verify files are actually staged
-STAGED_COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
-echo -e "  Files staged: ${BOLD}$STAGED_COUNT${NC}"
-
-if [ "$STAGED_COUNT" -lt 5 ]; then
-    echo ""
-    echo -e "  ${RED}WARNING: Expected at least 5 files but only found $STAGED_COUNT${NC}"
-    echo "  Staged files:"
-    git diff --cached --name-only | sed 's/^/    /'
-    echo ""
-    fail "Too few files staged. Something is wrong with the project folder."
-fi
-
-# Show what we're committing
-echo "  Key files:"
-git diff --cached --name-only | grep -E "(index\.html|styles\.css|explorer\.js|data\.js|deploy\.yml)" | sed 's/^/    ✓ /'
-
-git commit -m "Deploy: Baseball Hub — Stats Explorer & Stuff+ Leaderboard
-
-Multi-file project structure with live data pipelines:
-- FanGraphs API (wRC+, WAR, wOBA, FIP, K%, BB%, SwStr%)
-- Baseball Savant (xwOBA, xBA, xSLG, Barrel%, Avg EV, Whiff%)
-- MLB Stats API (player lookups, season stats)
-- Custom XGBoost Stuff+ model (100-centered scale)
-
-GitHub Pages auto-deployment via Actions."
-
-ok "All $STAGED_COUNT files committed"
-
-# ══════════════════════════════════════════════════════════════════════════
-# STEP 6: Create new GitHub repository
-# ══════════════════════════════════════════════════════════════════════════
-step 6 "Creating GitHub repository..."
-
-gh repo create "$REPO_NAME" \
-    --public \
-    --description "Baseball Hub — Advanced MLB Stats Explorer & Stuff+ Leaderboard by Jack Mueller" \
-    --source=. \
-    --remote=origin \
-    --push
-
-if [ $? -ne 0 ]; then
-    # Fallback: manual remote + push
-    info "Trying fallback push method..."
+    # Set remote
     git remote remove origin 2>/dev/null
     git remote add origin "https://github.com/$GH_USER/$REPO_NAME.git"
-    git push -u origin main --force
-fi
-
-ok "Repository created and code pushed"
-
-# ══════════════════════════════════════════════════════════════════════════
-# STEP 7: Verify the push worked
-# ══════════════════════════════════════════════════════════════════════════
-step 7 "Verifying files on GitHub..."
-
-sleep 2
-REMOTE_FILES=$(gh api repos/"$GH_USER"/"$REPO_NAME"/git/trees/main --jq '.tree | length' 2>/dev/null || echo "0")
-echo -e "  Files on GitHub: ${BOLD}$REMOTE_FILES${NC}"
-
-if [ "$REMOTE_FILES" -lt 3 ]; then
-    info "Push may not have completed. Trying force push..."
-    git push -u origin main --force
-    sleep 2
-    REMOTE_FILES=$(gh api repos/"$GH_USER"/"$REPO_NAME"/git/trees/main --jq '.tree | length' 2>/dev/null || echo "0")
-    echo -e "  Files on GitHub (retry): ${BOLD}$REMOTE_FILES${NC}"
-fi
-
-# Check that index.html specifically exists
-HAS_INDEX=$(gh api repos/"$GH_USER"/"$REPO_NAME"/contents/index.html --jq '.name' 2>/dev/null || echo "")
-if [ "$HAS_INDEX" = "index.html" ]; then
-    ok "index.html confirmed on GitHub"
-else
-    fail "index.html is NOT on GitHub. The push failed. Try running this script again."
+    ok "Git configured with remote"
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# STEP 8: Enable GitHub Pages
+# STEP 5: Commit and push
 # ══════════════════════════════════════════════════════════════════════════
-step 8 "Enabling GitHub Pages..."
+step 5 "Committing and pushing..."
 
-# Try Actions-based deployment first
-gh api repos/"$GH_USER"/"$REPO_NAME"/pages \
-    --method POST \
-    --field "build_type=workflow" \
-    2>/dev/null && ok "GitHub Pages enabled (Actions workflow)" \
-    || {
-        # Fallback: try setting source to main branch root
-        gh api repos/"$GH_USER"/"$REPO_NAME"/pages \
-            --method POST \
-            -f "source[branch]=main" \
-            -f "source[path]=/" \
-            2>/dev/null && ok "GitHub Pages enabled (branch deploy)" \
-            || info "Pages may already be enabled"
-    }
+git add -A
+STAGED_COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
+
+if [ "$STAGED_COUNT" -eq 0 ] && [ "$FRESH_DEPLOY" = false ]; then
+    # Check if there are any changes at all
+    if git diff --quiet HEAD 2>/dev/null; then
+        info "No changes detected — force-pushing existing code"
+        git push -u origin main --force
+        ok "Force-pushed (no changes)"
+    else
+        git add -A
+        STAGED_COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
+    fi
+fi
+
+if [ "$STAGED_COUNT" -gt 0 ]; then
+    echo -e "  Files staged: ${BOLD}$STAGED_COUNT${NC}"
+    echo "  Key files:"
+    git diff --cached --name-only | grep -E "(index\.html|styles\.css|explorer\.js|leaderboard\.js|data\.js|deploy\.yml|fetch-data\.yml)" | sed 's/^/    ✓ /'
+
+    TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+    git commit -m "Deploy: Baseball Hub — $TIMESTAMP
+
+Updated files: custom XGBoost Stuff+ model, Statcast/Savant pipeline,
+FanGraphs data integration, GitHub Actions daily cron."
+
+    if [ "$FRESH_DEPLOY" = true ]; then
+        gh repo create "$REPO_NAME" \
+            --public \
+            --description "Baseball Hub — Advanced MLB Stats Explorer & Stuff+ Leaderboard by Jack Mueller" \
+            --source=. \
+            --remote=origin \
+            --push
+        if [ $? -ne 0 ]; then
+            git remote remove origin 2>/dev/null
+            git remote add origin "https://github.com/$GH_USER/$REPO_NAME.git"
+            git push -u origin main --force
+        fi
+    else
+        git push -u origin main --force
+    fi
+    ok "Code pushed to GitHub"
+fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# STEP 9: Wait for deployment and open site
+# STEP 6: Enable Pages + trigger data fetch
 # ══════════════════════════════════════════════════════════════════════════
-step 9 "Waiting for site to go live..."
+step 6 "Configuring GitHub Pages & triggering data fetch..."
+
+if [ "$FRESH_DEPLOY" = true ]; then
+    # Enable Pages via Actions
+    gh api repos/"$GH_USER"/"$REPO_NAME"/pages \
+        --method POST \
+        --field "build_type=workflow" \
+        2>/dev/null && ok "GitHub Pages enabled" \
+        || info "Pages may already be enabled"
+fi
+
+# Trigger the data fetch workflow
+sleep 3
+gh workflow run "Fetch 2026 Live Data" --repo "$GH_USER/$REPO_NAME" 2>/dev/null \
+    && ok "Data fetch workflow triggered — Statcast + FanGraphs data will populate in ~2 minutes" \
+    || info "Data fetch workflow will run on next daily cron (8AM UTC)"
+
+# ══════════════════════════════════════════════════════════════════════════
+# STEP 7: Wait for deploy + open site
+# ══════════════════════════════════════════════════════════════════════════
+step 7 "Waiting for site to go live..."
 
 SITE_URL="https://$GH_USER.github.io/$REPO_NAME/"
 REPO_URL="https://github.com/$GH_USER/$REPO_NAME"
-MAX_WAIT=150
+MAX_WAIT=120
 WAITED=0
 
 while [ $WAITED -lt $MAX_WAIT ]; do
-    # Check Actions workflow
-    RUN_STATUS=$(gh run list --repo "$GH_USER/$REPO_NAME" --limit 1 --json status --jq '.[0].status' 2>/dev/null || echo "unknown")
-
-    if [ "$RUN_STATUS" = "completed" ]; then
-        CONCLUSION=$(gh run list --repo "$GH_USER/$REPO_NAME" --limit 1 --json conclusion --jq '.[0].conclusion' 2>/dev/null || echo "unknown")
-        if [ "$CONCLUSION" = "success" ]; then
-            ok "Deployment successful!"
-            break
-        else
-            info "Deploy finished with status: $CONCLUSION"
-            break
-        fi
-    fi
-
-    # Also try hitting the URL directly
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$SITE_URL" 2>/dev/null || echo "000")
     if [ "$HTTP_CODE" = "200" ]; then
         ok "Site is live! (HTTP 200)"
+        break
+    fi
+
+    RUN_STATUS=$(gh run list --repo "$GH_USER/$REPO_NAME" --workflow "Deploy to GitHub Pages" --limit 1 --json status --jq '.[0].status' 2>/dev/null || echo "unknown")
+    if [ "$RUN_STATUS" = "completed" ]; then
+        ok "Deploy workflow completed"
         break
     fi
 
@@ -302,8 +246,7 @@ done
 echo ""
 
 if [ $WAITED -ge $MAX_WAIT ]; then
-    info "Deployment is still processing — check back in a minute."
-    info "Status: gh run list --repo $GH_USER/$REPO_NAME"
+    info "Deployment still processing — check back in a minute."
 fi
 
 # ── Open in browser ──
@@ -314,6 +257,11 @@ echo -e "${BOLD}═════════════════════�
 echo ""
 echo -e "  🌐 Site: ${GREEN}${BOLD}$SITE_URL${NC}"
 echo -e "  📄 Repo: $REPO_URL"
+echo -e "  📊 Data: Auto-fetches daily at 4AM ET (FanGraphs + Savant)"
+echo ""
+echo -e "  ${YELLOW}Note:${NC} Statcast/FanGraphs data will appear after the fetch"
+echo -e "  workflow completes (~2 min). Custom Stuff+ model data"
+echo -e "  (2020-2025) is already embedded in the site."
 echo ""
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -322,7 +270,5 @@ elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     xdg-open "$SITE_URL" 2>/dev/null || true
 fi
 
-echo -e "  ${YELLOW}Future updates:${NC} edit files, then double-click this file again."
-echo ""
 echo "Press any key to close this window..."
 read -n1

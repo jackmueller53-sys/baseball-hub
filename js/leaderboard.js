@@ -18,7 +18,10 @@ function loadData() {
         era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
         kpct: r.kp, bbpct: r.bbp, kbbpct: r.kbb, war: r.war,
         csw: r.csw, swstr: r.sws, ip: r.ip,
-        fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp
+        fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp,
+        apw: r.apw != null ? r.apw : null,   // avg predicted whiff probability (custom model)
+        awr: r.awr != null ? r.awr : null,   // actual whiff rate (custom model)
+        _source: "custom_model"               // flag: from custom XGBoost model
       };
     });
     return true;
@@ -89,7 +92,8 @@ function renderHistogram(filteredRows) {
   var statsEl = document.getElementById('hist-stats');
   document.getElementById('hist-season-label').textContent = activeSeason ? ' \u2014 ' + activeSeason + ' Season' : '';
 
-  var scores = filteredRows.map(function(r) { return r.overall; }).filter(function(v) { return v != null; });
+  // Use custom model 'overall' when available; fall back to fgStuff for 2026 FG-only rows
+  var scores = filteredRows.map(function(r) { return r.overall != null ? r.overall : r.fgStuff; }).filter(function(v) { return v != null; });
   if (scores.length === 0) { svg.innerHTML = ''; statsEl.innerHTML = ''; return; }
 
   // Buckets: 100-centered scale (50-150 range)
@@ -178,8 +182,8 @@ function buildHeaders() {
 
   g += '<th class="sep-header"></th>';
   c += '<td class="sep"></td>';
-  g += '<th colspan="5" class="grp-model">Custom Model Output</th>';
-  c += '<th data-col="overall">Overall</th><th data-col="fb">FB</th><th data-col="brk">BRK</th><th data-col="off">OFF</th><th data-col="mix">Mix</th>';
+  g += '<th colspan="4" class="grp-model">Custom XGBoost Model</th>';
+  c += '<th data-col="overall">Stuff+</th><th data-col="apw">Pred Whiff</th><th data-col="awr">Actual Whiff</th><th data-col="mix">Mix</th>';
 
   if (mode === 'full' || mode === 'comparison') {
     g += '<th class="sep-header"></th>'; c += '<td class="sep"></td>';
@@ -220,6 +224,11 @@ function renderTable() {
 
   rows.sort(function(a, b) {
     var av = a[sortCol], bv = b[sortCol];
+    // For 'overall' sort: if custom model grade is null, fall back to fgStuff
+    if (sortCol === 'overall') {
+      if (av == null) av = a.fgStuff;
+      if (bv == null) bv = b.fgStuff;
+    }
     if (sortCol === 'name') { return sortDir === 'asc' ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||''); }
     if (av == null) av = -Infinity; if (bv == null) bv = -Infinity;
     return sortDir === 'desc' ? bv - av : av - bv;
@@ -241,10 +250,16 @@ function renderTable() {
     h += '<td class="nm">' + r.name + '<span class="team">' + (r.team||'') + '</span></td>';
     h += '<td class="pub">' + r.totalPitches.toLocaleString() + '</td>';
     h += '<td class="sep"></td>';
-    h += '<td>' + fmtGrade(r.overall,'grade-overall') + '</td>';
-    h += '<td>' + fmtGrade(r.fb) + '</td>';
-    h += '<td>' + fmtGrade(r.brk) + '</td>';
-    h += '<td>' + fmtGrade(r.off) + '</td>';
+    // Show custom model grade if available; for 2026 FG-only rows, show FG Stuff+ with 'fg' marker
+    if (r.overall != null) {
+      h += '<td>' + fmtGrade(r.overall,'grade-overall') + '</td>';
+    } else if (r.fgStuff != null) {
+      h += '<td>' + fmtGrade(r.fgStuff,'grade-overall') + '<span class="fg-tag" title="FanGraphs model (custom model pending)">FG</span></td>';
+    } else {
+      h += '<td>' + fmtGrade(null) + '</td>';
+    }
+    h += '<td>' + fmtPub(r.apw, 'pct') + '</td>';
+    h += '<td>' + fmtPub(r.awr, 'pct') + '</td>';
     h += '<td>' + pitchMix(r) + '</td>';
     if (mode === 'full' || mode === 'comparison') {
       h += '<td class="sep"></td>';
@@ -291,9 +306,11 @@ function openStuffPlayerCard(idx){
     csw:      r.csw != null ? r.csw * 100 : null,
     swstr:    r.swstr != null ? r.swstr * 100 : null,
     role:     "SP",
-    stuff_plus:    r.overall,
+    stuff_plus:    r.overall != null ? r.overall : r.fgStuff,
     location_plus: r.fgLoc,
-    pitching_plus: r.fgPit
+    pitching_plus: r.fgPit,
+    apw:           r.apw,
+    awr:           r.awr
   };
   if(typeof openPlayerCard === 'function'){
     openPlayerCard(player, "pitchers").catch(function(e){ console.error("Stuff+ card error:", e); });
@@ -303,29 +320,22 @@ function openStuffPlayerCard(idx){
 // ── STUFF+ 2026 LIVE FETCH ───────────────────────────────────────────────────
 // Maps a FanGraphs Pitching+ (type=36) row plus a type=8 row into our Stuff+ format.
 // FG type=36 fields: "Stuff+", "Location+", "Pitching+", IP, K%, BB%, ERA, FIP, WAR
-// We use FG's Stuff+ as our overall grade and derive FB/BRK/OFF from type=8 pitch vals.
+//
+// CRITICAL: For 2026, we do NOT have custom XGBoost model scores yet.
+// FG's Stuff+ is stored in fgStuff for comparison, but the custom model 'overall'
+// grade is null. The table clearly distinguishes "Custom Model" vs "FanGraphs Model".
 function mapFGStuffRow(spRow, stdRow){
   // FanGraphs Stuff+ field — try several possible names
-  // IMPORTANT: FG's actual field names are sp_stuff, sp_location, sp_pitching (verified via live API 2026-03-27)
-  const ov = Math.round(
+  const fgStuffVal = Math.round(
     nf(spRow["sp_stuff"] || spRow["Stuff+"] || spRow["stuff_plus"] || spRow["StuffPlus"]) || 0
   );
-  if(!ov) return null; // skip rows where Stuff+ is missing/zero
+  if(!fgStuffVal) return null; // skip rows where FG Stuff+ is missing/zero
 
   const fgLoc = Math.round(nf(spRow["sp_location"] || spRow["Location+"] || spRow["location_plus"] || spRow["LocationPlus"]) || 100);
   const fgPit = Math.round(nf(spRow["sp_pitching"] || spRow["Pitching+"] || spRow["pitching_plus"] || spRow["PitchingPlus"]) || 100);
 
-  // Pitch-type grades: FG doesn't break these out in type=36, so we approximate:
-  //  FB ≈ overall  (four-seam dominates Stuff+)
-  //  BRK = weighted down slightly from overall
-  //  OFF = off-speed, correlated but with higher variance
-  // In future these could be fetched from FG's pitch-type detail endpoint.
-  const fb  = Math.round(ov * 1.03);
-  const bk  = Math.round(ov * 0.97);
-  const off = Math.round(ov * 0.94);
-
   // Counting / traditional stats from std row (type=8)
-  const std = stdRow || spRow; // fall back to using spRow fields if no std
+  const std = stdRow || spRow;
   const ip  = nf(std["IP"]||std["ip"]) || nf(spRow["IP"]||spRow["ip"]) || 0;
   const era = nf(std["ERA"]||std["era"]) || nf(spRow["ERA"]||spRow["era"]);
   const fip = nf(std["FIP"]||std["fip"]) || nf(spRow["FIP"]||spRow["fip"]);
@@ -333,8 +343,6 @@ function mapFGStuffRow(spRow, stdRow){
   const kp  = pct(std["K%"]||std["SO%"]) || pct(spRow["K%"]||spRow["SO%"]);
   const bbp = pct(std["BB%"]) || pct(spRow["BB%"]);
   const kbb = (kp!=null && bbp!=null) ? Math.round((kp - bbp)*10)/10 : null;
-  const g   = nf(std["G"]||std["g"]) || nf(spRow["G"]||spRow["g"]) || 0;
-  const gs  = nf(std["GS"]||std["gs"]) || nf(spRow["GS"]||spRow["gs"]) || 0;
 
   // Total pitches from IP (rough: ~15 pitches per IP)
   const tp = ip ? Math.round(ip * 15) : 0;
@@ -343,13 +351,13 @@ function mapFGStuffRow(spRow, stdRow){
   const team    = (teamRaw==="- - -"||teamRaw==="---"||teamRaw==="TOT") ? "" : teamRaw;
 
   return {
-    // IMPORTANT: Field names must match loadData() mapping — renderTable uses
-    // 'overall', 'fb', 'brk', 'off' (not 'ov', 'bk', 'of' from RAW_DATA shorthand)
     pitcher: nf(spRow["xMLBAMID"]||spRow["MLBAMID"]||std["xMLBAMID"]||std["MLBAMID"]) || null,
     name:    stripHTML(spRow["Name"]||spRow["PlayerName"]||std["Name"]||""),
     team,
     season:  2026,
-    overall: ov, fb: fb, brk: bk, off: off,
+    // Custom model: no scores for 2026 yet (model hasn't been run on new season data)
+    overall: null, fb: null, brk: null, off: null,
+    apw: null, awr: null,
     totalPitches: tp,
     fbPitches:    Math.round(tp * 0.45),
     brkPitches:   Math.round(tp * 0.30),
@@ -361,10 +369,10 @@ function mapFGStuffRow(spRow, stdRow){
     war: war,
     csw:  null, swstr: null,
     ip:   ip,
-    fgStuff: ov,     // FG Stuff+ IS our stuff grade for live 2026
+    fgStuff: fgStuffVal,  // FanGraphs Stuff+ (their model, not ours)
     fgLoc:   fgLoc,
     fgPit:   fgPit,
-    _source: "fg_live",  // flag: this row came from live FG fetch
+    _source: "fg_live",
   };
 }
 
@@ -425,7 +433,7 @@ async function load2026StuffPlusLive(){
         allRows.push({
           pitcher: nf(r["xMLBAMID"]||r["MLBAMID"]) || null,
           name: name, team: team, season: 2026,
-          overall: null, fb: null, brk: null, off: null,  // Stuff+ not available yet
+          overall: null, fb: null, brk: null, off: null, apw: null, awr: null,  // Stuff+ not available yet
           totalPitches: tp, fbPitches: Math.round(tp*0.45), brkPitches: Math.round(tp*0.30), offPitches: Math.round(tp*0.25),
           era: nf(r["ERA"]||r["era"]), fip: nf(r["FIP"]||r["fip"]),
           xfip: nf(r["xFIP"]||r["xfip"]), xera: null,

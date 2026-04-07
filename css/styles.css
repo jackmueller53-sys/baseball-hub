@@ -496,6 +496,7 @@ tr:hover td{background:rgba(0,0,0,.02)}
 .lb .nm .team{font-size:9px;font-weight:600;color:var(--fg2);letter-spacing:1.5px;margin-left:6px}
 .grade-cell{font-family:var(--fh);font-weight:900;font-size:15px;letter-spacing:.5px;min-width:50px}
 .grade-overall{font-size:18px}
+.fg-tag{font-size:8px;font-weight:700;color:#fff;background:#92400E;border-radius:3px;padding:1px 4px;margin-left:4px;vertical-align:super;letter-spacing:.5px;cursor:help}
 .g-80{color:#047857;font-weight:900}.g-70{color:#059669}.g-60{color:#0D9488}
 .g-55{color:#5B8A72}.g-50{color:var(--fg2)}.g-45{color:#92400E}
 .g-40{color:#C2410C}.g-30{color:#B91C1C}.g-20{color:#991B1B;font-weight:900}
