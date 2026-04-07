@@ -285,13 +285,82 @@ function unwrapProxyText(text){
   return text;
 }
 
-// Savant CSV leaderboard (expected stats)
+// ── SAVANT / STATCAST: ALTERNATIVE FETCH PIPELINE ───────────────────────────
+// Per design: FanGraphs uses the CORS proxy chain above. Savant/Statcast uses
+// a DIFFERENT pipeline: direct fetch first (Savant often allows CORS from HTTPS
+// origins like GitHub Pages), then a dedicated set of fallback proxies separate
+// from the FG chain, then MLB Stats API as a final backstop.
+
+const SAVANT_PROXIES = [
+  { name:"corsproxy.io",    url: u => "https://corsproxy.io/?"+encodeURIComponent(u) },
+  { name:"allorigins-raw",  url: u => "https://api.allorigins.win/raw?url="+encodeURIComponent(u) },
+  { name:"corsproxy.org",   url: u => "https://corsproxy.org/?"+encodeURIComponent(u) },
+  { name:"allorigins-json", url: u => "https://api.allorigins.win/get?url="+encodeURIComponent(u) },
+];
+let _svProxyIdx = 0;
+let _svProxyFails = {};
+let _svDirectWorks = null; // null=untested, true=yes, false=no
+
+async function savantFetch(url, retries=2){
+  let lastErr;
+
+  // ── Attempt 1: Direct fetch (no proxy) ──
+  // Savant may serve CORS headers to HTTPS origins (e.g., GitHub Pages)
+  if(!_isFileProtocol && _svDirectWorks !== false){
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(()=>controller.abort(), 8000);
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if(r.ok){
+        _svDirectWorks = true;
+        console.log(`[savant-fetch] DIRECT success: ${url.slice(0,80)}...`);
+        return r;
+      }
+      throw new Error("HTTP "+r.status);
+    } catch(e){
+      if(_svDirectWorks === null){
+        console.warn(`[savant-fetch] Direct fetch failed (${e.message}). Switching to Savant proxy chain.`);
+        _svDirectWorks = false;
+      }
+    }
+  }
+
+  // ── Attempt 2: Dedicated Savant proxy chain (separate from FG proxies) ──
+  const maxAttempts = SAVANT_PROXIES.length * retries;
+  for(let attempt=0; attempt < maxAttempts; attempt++){
+    const proxy = SAVANT_PROXIES[_svProxyIdx % SAVANT_PROXIES.length];
+    if((_svProxyFails[proxy.name]||0) >= 3){
+      _svProxyIdx++;
+      continue;
+    }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(()=>controller.abort(), 12000);
+      const r = await fetch(proxy.url(url), { signal: controller.signal });
+      clearTimeout(timeout);
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      _svProxyFails[proxy.name] = 0;
+      console.log(`[savant-fetch] Proxy ${proxy.name} success: ${url.slice(0,80)}...`);
+      return r;
+    } catch(e){
+      lastErr = e;
+      _svProxyFails[proxy.name] = (_svProxyFails[proxy.name]||0) + 1;
+      console.warn(`[savant-proxy] ${proxy.name} failed (attempt ${attempt+1}): ${e.message}`);
+      _svProxyIdx++;
+      await new Promise(ok=>setTimeout(ok, 200));
+    }
+  }
+  throw new Error("All Savant proxies failed after "+maxAttempts+" attempts. Last: "+lastErr?.message);
+}
+
+// Savant CSV leaderboard (expected stats) — uses dedicated Savant pipeline
 // minPA: numeric PA threshold, or "q" for Savant default qualified
 async function fetchSavantXStats(season, type, minPA){
   minPA = minPA || "q";
   const url = "https://baseballsavant.mlb.com/leaderboard/expected_statistics"
     + "?type="+type+"&year="+season+"&position=&team=&min="+minPA+"&csv=true";
-  const r = await proxyFetch(url);
+  const r = await savantFetch(url);
   const rawText = await r.text();
   const text = unwrapProxyText(rawText);
   return new Promise((res,rej) => {
@@ -301,11 +370,11 @@ async function fetchSavantXStats(season, type, minPA){
   });
 }
 
-// Savant sprint speed CSV
+// Savant sprint speed CSV — uses dedicated Savant pipeline
 async function fetchSavantSprint(season){
   const url = "https://baseballsavant.mlb.com/running_splits"
     + "?type=running&bats=&year="+season+"&position=&team=&min=10&csv=true";
-  const r = await proxyFetch(url);
+  const r = await savantFetch(url);
   const rawText = await r.text();
   const text = unwrapProxyText(rawText);
   return new Promise((res,rej) => {
@@ -313,6 +382,38 @@ async function fetchSavantSprint(season){
       complete: d => { console.log(`[SavantSprint] ${season}: ${d.data.length} rows`); res(d.data); },
       error: ()=>res([])});
   });
+}
+
+// ── MLB STATS API FALLBACK ──────────────────────────────────────────────────
+// Native CORS support — always works as final backstop for basic Statcast data.
+// Returns player rows with MLBAM IDs for merging with FanGraphs data.
+async function fetchMLBStatsAPI(season, group){
+  // group: "hitting" or "pitching"
+  const url = "https://statsapi.mlb.com/api/v1/stats"
+    + "?stats=season&season="+season+"&group="+group+"&sportId=1"
+    + "&limit=1000&offset=0&gameType=R"
+    + "&fields=splits,stat,player,id,fullName,currentTeam,abbreviation";
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(()=>controller.abort(), 10000);
+    const r = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if(!r.ok) throw new Error("MLB API HTTP "+r.status);
+    const data = await r.json();
+    // Flatten: data.stats[0].splits[] → [{player_id, player_name, team, ...stats}]
+    const splits = (data.stats && data.stats[0] && data.stats[0].splits) || [];
+    const rows = splits.map(s => ({
+      player_id: String(s.player?.id || ""),
+      player_name: s.player?.fullName || "",
+      team_name_abbrev: s.team?.abbreviation || "",
+      ...s.stat
+    }));
+    console.log(`[MLBStatsAPI] ${group} ${season}: ${rows.length} rows`);
+    return rows;
+  } catch(e){
+    console.error(`[MLBStatsAPI] ${group} fetch failed:`, e.message);
+    return [];
+  }
 }
 
 // ── NAME NORMALISATION (for fuzzy join FG ↔ Savant) ─────────────────────────
@@ -2588,8 +2689,8 @@ function mapHitter(fg, sv, sp){
     babip:      nf(fg["BABIP"]||fg["babip"]),
     iso:        nf(fg["ISO"]||fg["iso"]),
     swstr:      pct(fg["SwStr%"]||fg["SwStrk%"]),
-    // Savant xStats (from expected_statistics CSV)
-    xwoba:      sv ? nf(sv["est_woba"]||sv["xwoba"]) : null,
+    // Savant xStats (from expected_statistics CSV or MLB Stats API fallback)
+    xwoba:      sv ? nf(sv["est_woba"]||sv["xwoba"]||sv["expectedBattingAvg"]) : null,
     xba:        sv ? nf(sv["est_ba"]||sv["xba"])     : null,
     xslg:       sv ? nf(sv["est_slg"]||sv["xslg"])   : null,
     // Barrel%, EV, HardHit%: FG type=8 returns these as Barrel% (decimal 0-1), EV (mph), HardHit% (decimal 0-1)
@@ -2644,12 +2745,12 @@ function mapPitcher(fg, sv, disc){
     csw:     cswPct,
     // Savant + FG Statcast enrichment
     // FG type=8 returns Barrel% (decimal 0-1), EV (mph), HardHit% (decimal 0-1) — verified 2026-03-27
-    xera:    nf(fg["xERA"]||fg["xera"]) || (sv ? nf(sv["xera"]||sv["est_era"]) : null),
+    xera:    nf(fg["xERA"]||fg["xera"]) || (sv ? nf(sv["xera"]||sv["est_era"]||sv["expectedEra"]) : null),
     brl_pct: nf(fg["Barrel%"]) != null ? nf(fg["Barrel%"]) * 100
-             : (sv ? nf(sv["barrel_batted_rate"]||sv["brl_percent"]) : null),
-    ev:      nf(fg["EV"]) || (sv ? nf(sv["avg_hit_speed"]||sv["exit_velocity_avg"]) : null),
-    whiff:   sv ? nf(sv["whiff_percent"]||sv["whiff_pct"]) : null,
-    velo:    sv ? nf(sv["avg_best_speed"]||sv["ff_avg_speed"]||sv["release_speed_avg"]) : null,
+             : (sv ? nf(sv["barrel_batted_rate"]||sv["brl_percent"]||sv["barrelBattedRate"]) : null),
+    ev:      nf(fg["EV"]) || (sv ? nf(sv["avg_hit_speed"]||sv["exit_velocity_avg"]||sv["exitVelocity"]) : null),
+    whiff:   sv ? nf(sv["whiff_percent"]||sv["whiff_pct"]||sv["whiffPercent"]) : null,
+    velo:    sv ? nf(sv["avg_best_speed"]||sv["ff_avg_speed"]||sv["release_speed_avg"]||sv["pitchVelocity"]) : null,
     // Player IDs — FanGraphs xMLBAMID is the most reliable cross-reference
     mlbam_id: nf(fg["xMLBAMID"]) || nf(fg["MLBAMID"]) || nf(fg["mlbamid"]) || (sv ? nf(sv["player_id"]) : null),
     fg_id:    fg["playerid"] || null,
@@ -2657,7 +2758,8 @@ function mapPitcher(fg, sv, disc){
 }
 
 // ── MERGE ────────────────────────────────────────────────────────────────────
-// Build a secondary Savant index keyed by player_id (MLBAM ID) for direct ID-based lookup
+// Build a secondary Savant/Statcast index keyed by player_id (MLBAM ID) for direct ID-based lookup.
+// Handles both Savant CSV format (field "player_id") and MLB Stats API format (field "player_id" set by fetchMLBStatsAPI).
 function buildSavantIdIdx(svRows){
   const idx = {};
   svRows.forEach(row => {
@@ -2880,10 +2982,10 @@ function getSeasonThresholds(){
   return { daysIn, fgQualBat, fgQualPit, svMin, minAB, minIP };
 }
 
-// ── LIVE 2026 LOADER — loads pre-fetched static JSON from /data/ ─────────────
-// Data is fetched server-side by GitHub Actions (daily cron) and committed as
-// static JSON files. This eliminates all CORS/proxy issues while keeping the
-// same merge logic, visualizations, and player card pipelines intact.
+// ── LIVE 2026 LOADER — fetches directly from FanGraphs + Savant via CORS proxies ──
+// Uses the proxyFetch() chain (direct → corsproxy.io → allorigins → thingproxy → codetabs)
+// for FanGraphs JSON API, and the same chain for Savant CSV endpoints.
+// FG and Savant data are merged on player name / MLBAM ID.
 async function loadLive2026(forceRefresh){
   if(_fetching26) return;
 
@@ -2895,46 +2997,60 @@ async function loadLive2026(forceRefresh){
   badge.textContent = "LOADING...";
   badge.className = "s-badge badge-loading";
   showBar(true);
-  setProg(0,"Loading 2026 data...");
+  setProg(0,"Fetching 2026 data...");
 
-  const { minAB, minIP } = getSeasonThresholds();
+  const { fgQualBat, fgQualPit, svMin, minAB, minIP } = getSeasonThresholds();
   const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
   const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
-
-  // Resolve base path for data files (works on GitHub Pages and local)
-  const base = (function(){
-    const s = document.currentScript || document.querySelector('script[src*="explorer"]');
-    if(s && s.src){ return s.src.replace(/js\/explorer\.js.*$/, ''); }
-    // Fallback: derive from page URL
-    const p = location.pathname.replace(/\/[^\/]*$/, '/');
-    return location.origin + p;
-  })();
-  const dataBase = base + 'data/';
 
   let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
   let errors = [];
 
   try {
-    // ── Load all pre-fetched JSON files in parallel ──
-    setProg(10,"Loading pre-fetched data files...");
-    const files = ['fg-bat.json','fg-pit.json','fg-disc-pit.json','sv-bat.json','sv-pit.json','sv-sprint.json','meta.json'];
-    const fetches = files.map(f => fetch(dataBase + f).then(r => {
-      if(!r.ok) throw new Error(f + ': HTTP ' + r.status);
-      return r.json();
-    }).catch(e => { errors.push(f+': '+e.message); return []; }));
+    // ── Step 1: Fetch FanGraphs data (JSON via CORS proxy chain) ──
+    setProg(5,"Fetching FanGraphs batting...");
+    try { fgBat = await fetchFG(2026, "bat", fgQualBat, _dateRange||{}); }
+    catch(e){ errors.push("FG bat: "+e.message); console.error("[2026] FG bat error:", e.message); }
 
-    const [_fgBat, _fgPit, _discPit, _svBat, _svPit, _spd, _meta] = await Promise.all(fetches);
-    fgBat = _fgBat || []; fgPit = _fgPit || []; discPit = _discPit || [];
-    svBat = _svBat || []; svPit = _svPit || []; spd = _spd || [];
+    setProg(20,"Fetching FanGraphs pitching...");
+    try { fgPit = await fetchFG(2026, "pit", fgQualPit, _dateRange||{}); }
+    catch(e){ errors.push("FG pit: "+e.message); console.error("[2026] FG pit error:", e.message); }
 
-    const metaInfo = _meta && _meta.fetchedAt ? _meta : null;
-    if(metaInfo){
-      console.log(`[loadLive2026] Data fetched at: ${metaInfo.fetchedAt}, counts:`, metaInfo.counts);
+    setProg(35,"Fetching FanGraphs discipline...");
+    try { discPit = await fetchFGDiscipline(2026, "pit", fgQualPit); }
+    catch(e){ errors.push("FG disc: "+e.message); console.error("[2026] FG discipline error:", e.message); }
+
+    // ── Step 2: Fetch Savant/Statcast data (SEPARATE pipeline from FG) ──
+    // Uses dedicated Savant fetch chain: direct fetch → Savant-specific proxies → MLB Stats API fallback
+    setProg(50,"Fetching Savant xStats (batters)...");
+    try { svBat = await fetchSavantXStats(2026, "batter", svMin); }
+    catch(e){
+      console.warn("[2026] Savant bat xStats failed, trying MLB Stats API fallback:", e.message);
+      try {
+        const mlbBat = await fetchMLBStatsAPI(2026, "hitting");
+        if(mlbBat.length > 0) svBat = mlbBat;
+      } catch(e2){ errors.push("Savant bat: "+e.message+" / MLB API: "+e2.message); }
     }
 
-    setProg(70,"Merging datasets...");
+    setProg(60,"Fetching Savant xStats (pitchers)...");
+    try { svPit = await fetchSavantXStats(2026, "pitcher", svMin); }
+    catch(e){
+      console.warn("[2026] Savant pit xStats failed, trying MLB Stats API fallback:", e.message);
+      try {
+        const mlbPit = await fetchMLBStatsAPI(2026, "pitching");
+        if(mlbPit.length > 0) svPit = mlbPit;
+      } catch(e2){ errors.push("Savant pit: "+e.message+" / MLB API: "+e2.message); }
+    }
 
-    // ── Same merge logic as before — mergeHitters/mergePitchers unchanged ──
+    setProg(70,"Fetching Savant sprint speed...");
+    try { spd = await fetchSavantSprint(2026); }
+    catch(e){ errors.push("Savant spd: "+e.message); console.error("[2026] Savant sprint error:", e.message); }
+
+    // ── Step 3: Merge FG + Savant on player name / MLBAM ID ──
+    setProg(80,"Merging FanGraphs + Savant datasets...");
+
+    console.log(`[loadLive2026] Fetched: FG bat=${fgBat.length} pit=${fgPit.length} disc=${discPit.length}, Savant bat=${svBat.length} pit=${svPit.length} spd=${spd.length}, errors=${errors.length}`);
+
     if(fgBat.length > 0 || fgPit.length > 0){
       const newHitters  = fgBat.length > 0 ? mergeHitters(fgBat, svBat, spd, dateMinAB) : DB[2026].hitters;
       const newPitchers = fgPit.length > 0 ? mergePitchers(fgPit, svPit, dateMinIP, discPit) : DB[2026].pitchers;
@@ -2948,19 +3064,13 @@ async function loadLive2026(forceRefresh){
       saveCache(newHitters, newPitchers);
       rebuildTeamDropdown(2026);
 
-      // Show data freshness from meta.json
       const rangeSuffix = _dateRange ? " · "+_dateRange.label : "";
-      let freshLabel = "2026 LIVE";
-      if(metaInfo && metaInfo.fetchedAt){
-        const hrs = Math.round((Date.now() - new Date(metaInfo.fetchedAt).getTime()) / 3600000);
-        if(hrs < 24) freshLabel = "2026 LIVE";
-        else freshLabel = "2026 (" + hrs + "h ago)";
-      }
       if(errors.length === 0){
-        badge.textContent = freshLabel + rangeSuffix;
+        badge.textContent = "2026 LIVE" + rangeSuffix;
         badge.className = "s-badge badge-live";
       } else {
-        badge.textContent = "2026 PARTIAL" + rangeSuffix;
+        // FG data loaded but some Savant calls may have failed — still usable
+        badge.textContent = "2026 LIVE (partial Savant)" + rangeSuffix;
         badge.className = "s-badge badge-loading";
         console.warn("[loadLive2026] Partial load, errors:", errors);
       }
@@ -2969,7 +3079,7 @@ async function loadLive2026(forceRefresh){
       render();
 
     } else {
-      throw new Error("No data in static JSON files — run the fetch workflow");
+      throw new Error("FanGraphs returned 0 rows — season data may not be available yet");
     }
 
   } catch(err){

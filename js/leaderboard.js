@@ -376,55 +376,38 @@ function mapFGStuffRow(spRow, stdRow){
   };
 }
 
-// Async: load 2026 Stuff+ from pre-fetched static JSON files (daily cron),
-// inject into allRows, rebuild season tabs, re-render.
-// All mapFGStuffRow() calculations and grade logic remain exactly the same.
+// Async: load 2026 Stuff+ LIVE from FanGraphs via CORS proxy chain.
+// Uses the same proxyFetch() + fetchFGStuffPlus() + fetchFG() functions
+// defined in explorer.js (loaded before leaderboard.js).
 async function load2026StuffPlusLive(){
   var statusEl = document.getElementById('loading');
   var origHtml = statusEl ? statusEl.innerHTML : '';
   try {
     if(statusEl) statusEl.innerHTML = '<div style="padding:12px;font-family:var(--fh);font-size:11px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Loading 2026 Stuff+ data…</div>';
 
-    // Resolve base path for data files
-    var dataBase = (function(){
-      var scripts = document.querySelectorAll('script[src]');
-      for(var i=0;i<scripts.length;i++){
-        var s = scripts[i].src;
-        if(s.indexOf('leaderboard')!==-1 || s.indexOf('explorer')!==-1){
-          return s.replace(/js\/[^\/]+$/, 'data/');
-        }
-      }
-      var p = location.pathname.replace(/\/[^\/]*$/, '/');
-      return location.origin + p + 'data/';
-    })();
+    // ── Fetch live from FanGraphs via CORS proxy chain ──
+    var sp = [], std = [];
 
-    // Load pre-fetched static JSON (from GitHub Actions daily cron)
-    var [spRes, stdRes] = await Promise.allSettled([
-      fetch(dataBase + 'fg-stuffplus.json').then(function(r){ return r.ok ? r.json() : []; }),
-      fetch(dataBase + 'fg-pit.json').then(function(r){ return r.ok ? r.json() : []; })
-    ]);
+    console.log("[stuff+2026] Fetching FG Stuff+ (type=36) via CORS proxy...");
+    try { sp = await fetchFGStuffPlus(2026); }
+    catch(e){ console.error("[stuff+2026] FG Stuff+ fetch error:", e.message); }
 
-    const sp  = spRes.status  === 'fulfilled' ? spRes.value  : [];
-    const std = stdRes.status === 'fulfilled' ? stdRes.value : [];
+    console.log("[stuff+2026] Fetching FG pitching (type=8) via CORS proxy...");
+    try { std = await fetchFG(2026, "pit", 1, {}); }
+    catch(e){ console.error("[stuff+2026] FG pitching fetch error:", e.message); }
 
-    // Log results
-    console.log("[stuff+2026] Stuff+ (type=36) load:", spRes.status,
-      spRes.status==='fulfilled' ? sp.length+" rows" : spRes.reason?.message);
-    console.log("[stuff+2026] Standard (type=8) load:", stdRes.status,
-      stdRes.status==='fulfilled' ? std.length+" rows" : stdRes.reason?.message);
-    if(sp.length > 0) console.log("[stuff+2026] Sample row fields:", Object.keys(sp[0]).join(", "));
+    console.log("[stuff+2026] Results: Stuff+ rows=" + sp.length + ", Standard rows=" + std.length);
+    if(sp.length > 0) console.log("[stuff+2026] Sample Stuff+ row fields:", Object.keys(sp[0]).slice(0,15).join(", "));
 
     // If type=36 (Stuff+) returns 0 rows but type=8 (standard) has data,
     // create preliminary entries using standard pitching stats.
-    // This handles early season when FG hasn't computed Stuff+ yet.
     if(!sp.length && std.length > 0){
-      console.warn("[stuff+2026] FanGraphs Stuff+ (type=36) returned 0 rows — using standard stats (type=8) as preliminary entries");
-      // Remove any pre-existing 2026 rows
+      console.warn("[stuff+2026] Stuff+ (type=36) returned 0 rows — using standard stats as preliminary entries");
       allRows = allRows.filter(function(r){ return r.season !== 2026; });
       var added = 0;
       std.forEach(function(r){
         var ip = nf(r["IP"]||r["ip"]) || 0;
-        if(ip < 0.1) return; // skip pitchers with no innings
+        if(ip < 0.1) return;
         var name = stripHTML(r["Name"]||r["PlayerName"]||"");
         if(!name) return;
         var teamRaw = r["Team"]||r["team"]||"";
@@ -433,7 +416,7 @@ async function load2026StuffPlusLive(){
         allRows.push({
           pitcher: nf(r["xMLBAMID"]||r["MLBAMID"]) || null,
           name: name, team: team, season: 2026,
-          overall: null, fb: null, brk: null, off: null, apw: null, awr: null,  // Stuff+ not available yet
+          overall: null, fb: null, brk: null, off: null, apw: null, awr: null,
           totalPitches: tp, fbPitches: Math.round(tp*0.45), brkPitches: Math.round(tp*0.30), offPitches: Math.round(tp*0.25),
           era: nf(r["ERA"]||r["era"]), fip: nf(r["FIP"]||r["fip"]),
           xfip: nf(r["xFIP"]||r["xfip"]), xera: null,
@@ -446,7 +429,7 @@ async function load2026StuffPlusLive(){
         });
         added++;
       });
-      console.log("[stuff+2026] Injected "+added+" preliminary 2026 rows (standard stats only, Stuff+ pending)");
+      console.log("[stuff+2026] Injected "+added+" preliminary 2026 rows (standard stats only)");
       if(added > 0){
         buildSeasonTabs();
         activeSeason = 2026;
@@ -469,7 +452,7 @@ async function load2026StuffPlusLive(){
     }
 
     if(!sp.length){
-      console.warn("[stuff+2026] FanGraphs returned 0 rows for both type=36 and type=8 — live 2026 tab unavailable (season data not yet available)");
+      console.warn("[stuff+2026] FG returned 0 rows for both type=36 and type=8 — 2026 tab unavailable");
       if(statusEl) statusEl.innerHTML = origHtml;
       return;
     }
@@ -478,7 +461,7 @@ async function load2026StuffPlusLive(){
     const stdIdx = {};
     std.forEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
 
-    // Remove any pre-existing 2026 rows (in case of re-fetch)
+    // Remove any pre-existing 2026 rows
     allRows = allRows.filter(function(r){ return r.season !== 2026; });
 
     // Map and add
@@ -495,19 +478,15 @@ async function load2026StuffPlusLive(){
     console.log("[stuff+2026] Injected "+added+" live 2026 rows into Stuff+ leaderboard");
 
     if(added > 0){
-      buildSeasonTabs();                        // adds 2026 tab
-      activeSeason = 2026;                      // auto-select 2026
-      // Set min-pitches threshold appropriate for 2026 early season
-      // 2 days in → ~50-100 pitches per starter, so set to 0 to show everyone
+      buildSeasonTabs();
+      activeSeason = 2026;
       var openDay2026 = new Date("2026-03-26");
       var daysIn2026 = Math.max(0, Math.floor((new Date() - openDay2026) / 86400000));
       var minPitchVal = daysIn2026 < 7 ? 0 : daysIn2026 < 30 ? 100 : daysIn2026 < 60 ? 200 : 400;
       document.getElementById('min-pitches').value = minPitchVal;
-      // Mark the 2026 tab as active in the UI
       document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
         b.classList.toggle('active', parseInt(b.textContent)===2026);
       });
-      // Show LIVE badge on 2026 tab
       document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
         if(parseInt(b.textContent)===2026 && !b.querySelector('.live-dot')){
           var dot = document.createElement('span');
