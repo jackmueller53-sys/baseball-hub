@@ -126,11 +126,11 @@ function getSeasonThresholds() {
   const daysIn = Math.max(0, Math.floor((now - openingDay) / 86400000));
 
   let fgQualBat, fgQualPit, svMin;
-  if (daysIn < 4)       { fgQualBat = 1;   fgQualPit = 1;   svMin = 1;  }
-  else if (daysIn < 7)  { fgQualBat = 5;   fgQualPit = 5;   svMin = 1;  }
-  else if (daysIn < 30) { fgQualBat = 20;  fgQualPit = 20;  svMin = 1;  }
-  else if (daysIn < 60) { fgQualBat = 50;  fgQualPit = 50;  svMin = 25; }
-  else                  { fgQualBat = 100; fgQualPit = 100; svMin = 25; }
+  if (daysIn < 4)       { fgQualBat = 0;   fgQualPit = 0;   svMin = 1;  }
+  else if (daysIn < 7)  { fgQualBat = 1;   fgQualPit = 0;   svMin = 1;  }
+  else if (daysIn < 30) { fgQualBat = 10;  fgQualPit = 0;   svMin = 1;  }
+  else if (daysIn < 60) { fgQualBat = 50;  fgQualPit = 20;  svMin = 25; }
+  else                  { fgQualBat = 100; fgQualPit = 50;  svMin = 25; }
 
   console.log(`  Season day: ${daysIn} → FG qual bat=${fgQualBat}, pit=${fgQualPit}, Savant min=${svMin}`);
   return { fgQualBat, fgQualPit, svMin, daysIn };
@@ -198,10 +198,18 @@ async function fetchSavantSprint() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SAVE JSON
+// SAVE JSON — only write if data is non-empty, preserving existing files on error
 // ═══════════════════════════════════════════════════════════════════════════
 function saveJSON(filename, data) {
   const filepath = path.join(DATA_DIR, filename);
+
+  // If data is empty array, skip writing to preserve previous version
+  if (Array.isArray(data) && data.length === 0) {
+    const existsFlag = fs.existsSync(filepath);
+    console.log(`  Skipped ${filename} (empty) — ${existsFlag ? 'preserved existing file' : 'no previous file to keep'}`);
+    return;
+  }
+
   fs.writeFileSync(filepath, JSON.stringify(data, null, 0), 'utf8');
   const size = (fs.statSync(filepath).size / 1024).toFixed(1);
   console.log(`  Saved ${filename} (${Array.isArray(data) ? data.length + ' rows' : 'object'}, ${size} KB)`);

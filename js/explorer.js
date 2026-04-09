@@ -2958,9 +2958,9 @@ function getSeasonThresholds(){
   //       so we must use qual=1 (any appearance) in the first week.
   let fgQualBat, fgQualPit, svMin, minAB, minIP;
 
-  if(daysIn < 4){
-    // Days 1-4: any playing time (1 game minimum)
-    fgQualBat = 1;  fgQualPit = 1;  svMin = 1;  minAB = 1;  minIP = 0.1;
+  if(daysIn < 30){
+    // Days 1-30: early season pitching uses qual=0 to get all pitchers
+    fgQualBat = 1;  fgQualPit = 0;  svMin = 1;  minAB = 1;  minIP = 0.1;
   } else if(daysIn < 10){
     // Days 4-10: small sample, ~3 games
     fgQualBat = 5;  fgQualPit = 3;  svMin = 5;  minAB = 3;  minIP = 2;
@@ -2980,6 +2980,86 @@ function getSeasonThresholds(){
 
   console.log(`[thresholds] ${daysIn} days in → FG bat qual:${fgQualBat} pit qual:${fgQualPit}, Savant min:${svMin}, minAB:${minAB}, minIP:${minIP}`);
   return { daysIn, fgQualBat, fgQualPit, svMin, minAB, minIP };
+}
+
+// ── STATIC 2026 DATA LOADER — loads from pre-fetched static JSON files ──
+// Fetches data/fg-bat.json, data/fg-pit.json, data/fg-disc-pit.json, data/sv-bat.json,
+// data/sv-pit.json, data/sv-sprint.json, and data/meta.json (all saved by GitHub Actions).
+// This provides instant data loading for both GitHub Pages (same-origin fetch) and local (file://) testing.
+// Returns true if data was loaded successfully, false otherwise.
+async function loadStaticData2026(){
+  const { minAB, minIP } = getSeasonThresholds();
+  const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
+  const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
+
+  let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
+
+  try {
+    // Determine base path: for GitHub Pages it's '', for file:// it may need '../' or similar
+    // Try both with and without relative path prefix
+    const fetchStaticFile = async (filename) => {
+      try {
+        // First try direct path (GitHub Pages)
+        const resp = await fetch(`data/${filename}`);
+        if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+      } catch(e1){
+        try {
+          // Fallback for file:// or alternative base paths
+          const resp = await fetch(`../data/${filename}`);
+          if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          return await resp.json();
+        } catch(e2){
+          console.warn(`[static-load] Failed to load ${filename}:`, e1.message, e2.message);
+          return null;
+        }
+      }
+    };
+
+    // Load all static files in parallel (timeout if needed)
+    setProg(2, "Loading static FanGraphs batting...");
+    fgBat = await fetchStaticFile("fg-bat.json") || [];
+
+    setProg(5, "Loading static FanGraphs pitching...");
+    fgPit = await fetchStaticFile("fg-pit.json") || [];
+
+    setProg(8, "Loading static FanGraphs discipline...");
+    discPit = await fetchStaticFile("fg-disc-pit.json") || [];
+
+    setProg(12, "Loading static Savant batting...");
+    svBat = await fetchStaticFile("sv-bat.json") || [];
+
+    setProg(16, "Loading static Savant pitching...");
+    svPit = await fetchStaticFile("sv-pit.json") || [];
+
+    setProg(19, "Loading static Savant sprint...");
+    spd = await fetchStaticFile("sv-sprint.json") || [];
+
+    // If we got at least FG batting or pitching data, merge and store
+    if(fgBat.length > 0 || fgPit.length > 0){
+      setProg(25, "Merging static datasets...");
+
+      const newHitters  = fgBat.length > 0 ? mergeHitters(fgBat, svBat, spd, dateMinAB) : [];
+      const newPitchers = fgPit.length > 0 ? mergePitchers(fgPit, svPit, dateMinIP, discPit) : [];
+
+      DB[2026].hitters   = newHitters;
+      DB[2026].pitchers  = newPitchers;
+      DB[2026].loaded    = true;
+      DB[2026].lastFetch = Date.now();
+
+      rebuildTeamDropdown(2026);
+
+      console.log(`[loadStaticData2026] Loaded: FG bat=${fgBat.length} pit=${fgPit.length} disc=${discPit.length}, Savant bat=${svBat.length} pit=${svPit.length} spd=${spd.length}`);
+      console.log(`[loadStaticData2026] Merged to: ${newHitters.length} hitters, ${newPitchers.length} pitchers`);
+      return true;
+    } else {
+      console.warn("[loadStaticData2026] No FanGraphs data found in static files");
+      return false;
+    }
+  } catch(err){
+    console.error("[loadStaticData2026] Unexpected error:", err);
+    return false;
+  }
 }
 
 // ── LIVE 2026 LOADER — fetches directly from FanGraphs + Savant via CORS proxies ──
@@ -3005,10 +3085,32 @@ async function loadLive2026(forceRefresh){
 
   let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
   let errors = [];
+  let staticLoaded = false;
 
   try {
+    // ── Step 0: Try loading from static files first (instant load) ──
+    setProg(0,"Loading static data (GitHub Actions fetch)...");
+    staticLoaded = await loadStaticData2026();
+
+    if(staticLoaded){
+      setProg(30,"Static data loaded, rendering...");
+      const rangeSuffix = _dateRange ? " · "+_dateRange.label : "";
+      badge.textContent = "2026 STATIC" + rangeSuffix;
+      badge.className = "s-badge badge-live";
+      setTimeout(()=>showBar(false), 600);
+      render();
+
+      // Background: attempt live refresh for freshest data
+      setProg(30,"Attempting live data refresh in background...");
+      console.log("[loadLive2026] Static data loaded; attempting live refresh in background...");
+      // Schedule a refresh in the background without blocking the UI
+      setTimeout(() => refreshLiveDataInBackground(), 100);
+      _fetching26 = false;
+      return;
+    }
+
     // ── Step 1: Fetch FanGraphs data (JSON via CORS proxy chain) ──
-    setProg(5,"Fetching FanGraphs batting...");
+    setProg(35,"Fetching FanGraphs batting...");
     try { fgBat = await fetchFG(2026, "bat", fgQualBat, _dateRange||{}); }
     catch(e){ errors.push("FG bat: "+e.message); console.error("[2026] FG bat error:", e.message); }
 
@@ -3135,6 +3237,81 @@ function manualRefresh(){
   clearCache();
   DB[2026].loaded = false;
   loadLive2026(true);
+}
+
+// Background live data refresh (tries to refresh from live CORS proxies after static load)
+// Does not display progress bar or block UI, only logs errors if they occur
+async function refreshLiveDataInBackground(){
+  if(_fetching26) return;
+  _fetching26 = true;
+
+  const { fgQualBat, fgQualPit, svMin, minAB, minIP } = getSeasonThresholds();
+  const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
+  const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
+
+  let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
+  let errors = [];
+
+  try {
+    // Try to fetch live data (but don't block, show no UI)
+    try { fgBat = await fetchFG(2026, "bat", fgQualBat, _dateRange||{}); }
+    catch(e){ errors.push("FG bat: "+e.message); }
+
+    try { fgPit = await fetchFG(2026, "pit", fgQualPit, _dateRange||{}); }
+    catch(e){ errors.push("FG pit: "+e.message); }
+
+    try { discPit = await fetchFGDiscipline(2026, "pit", fgQualPit); }
+    catch(e){ errors.push("FG disc: "+e.message); }
+
+    try { svBat = await fetchSavantXStats(2026, "batter", svMin); }
+    catch(e){
+      try { const mlbBat = await fetchMLBStatsAPI(2026, "hitting"); if(mlbBat.length > 0) svBat = mlbBat; }
+      catch(e2){ errors.push("Savant bat: "+e.message); }
+    }
+
+    try { svPit = await fetchSavantXStats(2026, "pitcher", svMin); }
+    catch(e){
+      try { const mlbPit = await fetchMLBStatsAPI(2026, "pitching"); if(mlbPit.length > 0) svPit = mlbPit; }
+      catch(e2){ errors.push("Savant pit: "+e.message); }
+    }
+
+    try { spd = await fetchSavantSprint(2026); }
+    catch(e){ errors.push("Savant spd: "+e.message); }
+
+    // If we got any live data, merge and update (silently)
+    if(fgBat.length > 0 || fgPit.length > 0){
+      const newHitters  = fgBat.length > 0 ? mergeHitters(fgBat, svBat, spd, dateMinAB) : DB[2026].hitters;
+      const newPitchers = fgPit.length > 0 ? mergePitchers(fgPit, svPit, dateMinIP, discPit) : DB[2026].pitchers;
+
+      DB[2026].hitters   = newHitters;
+      DB[2026].pitchers  = newPitchers;
+      DB[2026].loaded    = true;
+      DB[2026].lastFetch = Date.now();
+
+      saveCache(newHitters, newPitchers);
+      rebuildTeamDropdown(2026);
+
+      // Update badge only if we successfully refreshed
+      const badge = document.getElementById("s-badge");
+      const rangeSuffix = _dateRange ? " · "+_dateRange.label : "";
+      if(errors.length === 0){
+        badge.textContent = "2026 LIVE" + rangeSuffix;
+        badge.className = "s-badge badge-live";
+      } else {
+        badge.textContent = "2026 LIVE (partial)" + rangeSuffix;
+        badge.className = "s-badge badge-loading";
+      }
+
+      render();
+      console.log("[refreshLiveDataInBackground] Successfully updated with live data");
+    } else {
+      console.warn("[refreshLiveDataInBackground] No live data retrieved, keeping static version");
+    }
+  } catch(err){
+    console.error("[refreshLiveDataInBackground] Unexpected error:", err);
+  } finally {
+    _fetching26 = false;
+  }
 }
 
 // ── TAB HANDLERS ─────────────────────────────────────────────────────────────

@@ -317,6 +317,88 @@ function openStuffPlayerCard(idx){
   }
 }
 
+// ── STUFF+ 2026 STATIC DATA LOADER ───────────────────────────────────────────
+// Loads 2026 Stuff+ data from static JSON files (custom model output or FG fallback).
+// Tries data/stuffplus-custom.json first (custom XGBoost output), then data/fg-stuffplus.json
+async function load2026StuffPlus() {
+  var statusEl = document.getElementById('loading');
+  var origHtml = statusEl ? statusEl.innerHTML : '';
+  try {
+    // Try custom model output first
+    try {
+      const resp = await fetch('data/stuffplus-custom.json');
+      if (resp.ok) {
+        const data = await resp.json();
+        // data should be in RAW_DATA format: [{p:..., n:..., s:2026, ov:..., ...}]
+        const rows2026 = data.filter(r => r.s === 2026);
+        if (rows2026.length > 0) {
+          // Merge into allRows, converting to the format loadData() produces
+          rows2026.forEach(function(r) {
+            allRows.push({
+              pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
+              overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
+              totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
+              era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
+              kpct: r.kp, bbpct: r.bbp, kbbpct: r.kbb, war: r.war,
+              csw: r.csw, swstr: r.sws, ip: r.ip,
+              fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp,
+              apw: r.apw != null ? r.apw : null,
+              awr: r.awr != null ? r.awr : null,
+              _source: "custom_model"
+            });
+          });
+          console.log('[load2026] Loaded ' + rows2026.length + ' custom model rows for 2026');
+          return true;
+        }
+      }
+    } catch(e) { console.warn('[load2026] Custom model data not available:', e.message); }
+
+    // Fallback: load FanGraphs Stuff+ data
+    try {
+      const resp = await fetch('data/fg-stuffplus.json');
+      if (resp.ok) {
+        const fgData = await resp.json();
+        if (fgData.length > 0) {
+          fgData.forEach(function(fg) {
+            // Extract name from HTML: <a href="...">Name</a>
+            var name = (fg.Name || fg.PlayerName || '').replace(/<[^>]*>/g, '').trim();
+            var team = (fg.Team || fg.TeamNameAbb || '').replace(/<[^>]*>/g, '').trim();
+            if (team === '- - -' || team === '---') team = '';
+
+            allRows.push({
+              pitcher: fg.xMLBAMID || fg.playerid,
+              name: name,
+              team: team,
+              season: fg.Season || 2026,
+              overall: fg.sp_stuff != null ? Math.round(fg.sp_stuff) : null,
+              fb: null, brk: null, off: null,
+              totalPitches: fg.Pitches || 0, fbPitches: 0, brkPitches: 0, offPitches: 0,
+              era: fg.ERA, fip: fg.FIP, xfip: fg.xFIP, xera: fg.xERA,
+              kpct: fg['K%'] != null ? fg['K%'] * 100 : null,
+              bbpct: fg['BB%'] != null ? fg['BB%'] * 100 : null,
+              kbbpct: fg['K-BB%'] != null ? fg['K-BB%'] * 100 : null,
+              war: fg.WAR,
+              csw: fg['C+SwStr%'] != null ? fg['C+SwStr%'] * 100 : null,
+              swstr: fg['SwStr%'] != null ? fg['SwStr%'] * 100 : null,
+              ip: fg.IP,
+              fgStuff: fg.sp_stuff, fgLoc: fg.sp_location, fgPit: fg.sp_pitching,
+              apw: null, awr: null,
+              _source: "fangraphs_stuffplus"
+            });
+          });
+          console.log('[load2026] Loaded ' + fgData.length + ' FG Stuff+ rows for 2026');
+          return true;
+        }
+      }
+    } catch(e) { console.warn('[load2026] FG Stuff+ data not available:', e.message); }
+
+    return false;
+  } catch(e) {
+    console.error('[load2026] Error:', e.message);
+    return false;
+  }
+}
+
 // ── STUFF+ 2026 LIVE FETCH ───────────────────────────────────────────────────
 // Maps a FanGraphs Pitching+ (type=36) row plus a type=8 row into our Stuff+ format.
 // FG type=36 fields: "Stuff+", "Location+", "Pitching+", IP, K%, BB%, ERA, FIP, WAR
@@ -517,7 +599,21 @@ async function load2026StuffPlusLive(){
   document.getElementById('min-pitches').addEventListener('change', renderTable);
   document.getElementById('view-mode').addEventListener('change', renderTable);
 
-  // Async-load live 2026 Stuff+ data after the static data is shown
-  setTimeout(load2026StuffPlusLive, 800);
+  // Async-load 2026 Stuff+ data: try static files first, then live fetch
+  (async function() {
+    var loaded = await load2026StuffPlus();
+    if (loaded) {
+      // Static files found and loaded — rebuild tabs and re-render
+      buildSeasonTabs();
+      activeSeason = 2026;
+      document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b) {
+        b.classList.toggle('active', parseInt(b.textContent) === 2026);
+      });
+      renderTable();
+    } else {
+      // Static files not available — try live fetch as fallback
+      setTimeout(load2026StuffPlusLive, 800);
+    }
+  })();
 })();
 

@@ -21,13 +21,25 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Fetch 2026 season data
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install pybaseball xgboost scikit-learn pandas numpy
+
+      - name: Fetch 2026 season data (FanGraphs + Savant)
         run: node scripts/fetch-2026.js
+
+      - name: Compute custom Stuff+ model scores
+        run: python3 scripts/compute_stuffplus.py
+        continue-on-error: true
 
       - name: Check for data changes
         id: check
         run: |
-          git add data/
+          git add data/ js/data.js
           if git diff --cached --quiet; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No data changes detected"
