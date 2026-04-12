@@ -286,7 +286,7 @@ function renderTable() {
   renderHistogram(rows);
 }
 
-// Bridge from Stuff+ row click → shared openPlayerCard modal
+// Bridge from Stuff+ row click â shared openPlayerCard modal
 function openStuffPlayerCard(idx){
   var r = window._stuffRows && window._stuffRows[idx];
   if(!r) return;
@@ -317,7 +317,7 @@ function openStuffPlayerCard(idx){
   }
 }
 
-// ── STUFF+ 2026 STATIC DATA LOADER ───────────────────────────────────────────
+// ââ STUFF+ 2026 STATIC DATA LOADER âââââââââââââââââââââââââââââââââââââââââââ
 // Loads 2026 Stuff+ data from static JSON files (custom model output or FG fallback).
 // Tries data/stuffplus-custom.json first (custom XGBoost output), then data/fg-stuffplus.json
 async function load2026StuffPlus() {
@@ -370,7 +370,9 @@ async function load2026StuffPlus() {
               name: name,
               team: team,
               season: fg.Season || 2026,
-              overall: fg.sp_stuff != null ? Math.round(fg.sp_stuff) : null,
+              // CRITICAL: overall is NULL — this is the Custom XGBoost column.
+              // FG Stuff+ goes ONLY into fgStuff for the FanGraphs comparison column.
+              overall: null,
               fb: null, brk: null, off: null,
               totalPitches: fg.Pitches || 0, fbPitches: 0, brkPitches: 0, offPitches: 0,
               era: fg.ERA, fip: fg.FIP, xfip: fg.xFIP, xera: fg.xERA,
@@ -399,7 +401,7 @@ async function load2026StuffPlus() {
   }
 }
 
-// ── STUFF+ 2026 LIVE FETCH ───────────────────────────────────────────────────
+// ââ STUFF+ 2026 LIVE FETCH âââââââââââââââââââââââââââââââââââââââââââââââââââ
 // Maps a FanGraphs Pitching+ (type=36) row plus a type=8 row into our Stuff+ format.
 // FG type=36 fields: "Stuff+", "Location+", "Pitching+", IP, K%, BB%, ERA, FIP, WAR
 //
@@ -407,7 +409,7 @@ async function load2026StuffPlus() {
 // FG's Stuff+ is stored in fgStuff for comparison, but the custom model 'overall'
 // grade is null. The table clearly distinguishes "Custom Model" vs "FanGraphs Model".
 function mapFGStuffRow(spRow, stdRow){
-  // FanGraphs Stuff+ field — try several possible names
+  // FanGraphs Stuff+ field â try several possible names
   const fgStuffVal = Math.round(
     nf(spRow["sp_stuff"] || spRow["Stuff+"] || spRow["stuff_plus"] || spRow["StuffPlus"]) || 0
   );
@@ -465,9 +467,9 @@ async function load2026StuffPlusLive(){
   var statusEl = document.getElementById('loading');
   var origHtml = statusEl ? statusEl.innerHTML : '';
   try {
-    if(statusEl) statusEl.innerHTML = '<div style="padding:12px;font-family:var(--fh);font-size:11px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Loading 2026 Stuff+ data…</div>';
+    if(statusEl) statusEl.innerHTML = '<div style="padding:12px;font-family:var(--fh);font-size:11px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Loading 2026 Stuff+ dataâ¦</div>';
 
-    // ── Fetch live from FanGraphs via CORS proxy chain ──
+    // ââ Fetch live from FanGraphs via CORS proxy chain ââ
     var sp = [], std = [];
 
     console.log("[stuff+2026] Fetching FG Stuff+ (type=36) via CORS proxy...");
@@ -484,7 +486,7 @@ async function load2026StuffPlusLive(){
     // If type=36 (Stuff+) returns 0 rows but type=8 (standard) has data,
     // create preliminary entries using standard pitching stats.
     if(!sp.length && std.length > 0){
-      console.warn("[stuff+2026] Stuff+ (type=36) returned 0 rows — using standard stats as preliminary entries");
+      console.warn("[stuff+2026] Stuff+ (type=36) returned 0 rows â using standard stats as preliminary entries");
       allRows = allRows.filter(function(r){ return r.season !== 2026; });
       var added = 0;
       std.forEach(function(r){
@@ -523,7 +525,7 @@ async function load2026StuffPlusLive(){
             var dot = document.createElement('span');
             dot.className = 'live-dot';
             dot.style.cssText = 'display:inline-block;width:6px;height:6px;background:#f5a623;border-radius:50%;margin-left:5px;vertical-align:middle;animation:blink 1.5s infinite';
-            dot.title = 'Preliminary data — Stuff+ grades not yet available';
+            dot.title = 'Preliminary data â Stuff+ grades not yet available';
             b.appendChild(dot);
           }
         });
@@ -534,7 +536,7 @@ async function load2026StuffPlusLive(){
     }
 
     if(!sp.length){
-      console.warn("[stuff+2026] FG returned 0 rows for both type=36 and type=8 — 2026 tab unavailable");
+      console.warn("[stuff+2026] FG returned 0 rows for both type=36 and type=8 â 2026 tab unavailable");
       if(statusEl) statusEl.innerHTML = origHtml;
       return;
     }
@@ -603,7 +605,7 @@ async function load2026StuffPlusLive(){
   (async function() {
     var loaded = await load2026StuffPlus();
     if (loaded) {
-      // Static files found and loaded — rebuild tabs and re-render
+      // Static files found and loaded â rebuild tabs and re-render
       buildSeasonTabs();
       activeSeason = 2026;
       document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b) {
@@ -611,7 +613,7 @@ async function load2026StuffPlusLive(){
       });
       renderTable();
     } else {
-      // Static files not available — try live fetch as fallback
+      // Static files not available â try live fetch as fallback
       setTimeout(load2026StuffPlusLive, 800);
     }
   })();
