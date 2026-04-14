@@ -328,7 +328,7 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df['is_in_zone'] = 0
     if 'zone' in df.columns:
         zone_num = pd.to_numeric(df['zone'], errors='coerce')
-        df['is_in_zone'] = (zone_num.between(1, 9)).astype(int).fillna(0).astype(int)
+        df['is_in_zone'] = zone_num.between(1, 9).fillna(False).astype(int)
 
     # is_chase: swing outside the zone
     df['is_chase'] = ((df['is_swing'] == 1) & (df['is_in_zone'] == 0)).astype(int)
