@@ -1,0 +1,1 @@
+["velo_diff", "hmov_diff", "vmov_diff", "release_point_spread", "tunnel_diff_from_fb", "early_trajectory_sim", "seq_velo_change", "seq_hmov_change", "seq_vmov_change", "seq_location_shift", "pitcher_entropy", "transition_surprise", "perceived_velocity", "VAA", "HAA", "extension_vs_avg", "release_speed", "pfx_x", "pfx_z", "pitch_type_enc", "prev_pitch_type_enc", "is_in_zone"]
