@@ -27,14 +27,13 @@ jobs:
           python-version: '3.11'
 
       - name: Install Python dependencies
-        run: pip install pybaseball xgboost scikit-learn pandas numpy
+        run: pip install pybaseball xgboost scikit-learn pandas numpy scipy
 
       - name: Fetch 2026 season data (FanGraphs + Savant)
         run: node scripts/fetch-2026.js
 
       - name: Compute custom Stuff+ model scores
-        run: python3 scripts/compute_stuffplus.py
-        continue-on-error: true
+        run: python3 scripts/compute_stuffplus.py --verbose
 
       - name: Check for data changes
         id: check
