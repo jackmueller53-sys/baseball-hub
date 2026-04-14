@@ -206,9 +206,9 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
                    df['vz0'] * df['primary_fb_vz0'])
     norm_pitch = np.sqrt(df['vx0'] ** 2 + df['vz0'] ** 2)
     norm_fb = np.sqrt(df['primary_fb_vx0'] ** 2 + df['primary_fb_vz0'] ** 2)
-    denominator = norm_pitch * norm_fb
+    denominator = (norm_pitch * norm_fb).fillna(0)
     df['early_trajectory_sim'] = np.where(
-        denominator > 0, dot_product / denominator, 0.0
+        denominator > 0, (dot_product / denominator).fillna(0), 0.0
     )
     df['early_trajectory_sim'] = df['early_trajectory_sim'].fillna(0)
 
