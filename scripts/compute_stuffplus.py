@@ -89,7 +89,7 @@ DATA_JS = JS_DIR / 'data.js'
 FG_STUFFPLUS_JSON = DATA_DIR / 'fg-stuffplus.json'
 
 # Constants
-TRAINING_SEASONS = [2020, 2021, 2022, 2023, 2024, 2025]
+TRAINING_SEASONS = [2023, 2024, 2025]  # 3 most recent seasons (~1.8M pitches, fast enough for CI)
 TARGET_SEASON = 2026
 PROBIT_SCALE_MIN = 20
 PROBIT_SCALE_MAX = 80
