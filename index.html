@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Baseball Hub â Advanced Stats & Stuff+ Leaderboard</title>
+<title>Baseball Hub &mdash; Advanced Stats &amp; Stuff+ Leaderboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -12,7 +12,7 @@
 </head>
 <body>
 
-<!-- âââ TOOLTIP (shared, floats over everything) âââââââââââââââââââââââââââ -->
+<!-- ═══ TOOLTIP (shared, floats over everything) ═══════════════════════════ -->
 <div id="dot-tip">
   <div class="dt-head">
     <div class="dt-name" id="dt-name"></div>
@@ -22,7 +22,7 @@
   <div class="dt-ax" id="dt-ax"></div>
 </div>
 
-<!-- âââ PLAYER CARD MODAL (shared) ââââââââââââââââââââââââââââââââââââââââââ -->
+<!-- ═══ PLAYER CARD MODAL (shared) ══════════════════════════════════════════ -->
 <div id="pc-overlay">
   <button class="pc-close" onclick="closePcOverlay()">&#10005;</button>
   <div id="pc-overlay-content"></div>
@@ -30,7 +30,7 @@
 
 <div class="page">
 
-<!-- âââ UNIFIED HUB HEADER âââââââââââââââââââââââââââââââââââââââââââââââââââ -->
+<!-- ═══ UNIFIED HUB HEADER ═══════════════════════════════════════════════════ -->
 <div id="hub-header">
   <div class="hub-hdr">
     <a class="hub-logo" href="#">
@@ -43,10 +43,10 @@
     <div class="hub-divider"></div>
     <nav class="hub-nav" id="hub-nav">
       <button class="hub-tab active" data-app="explorer" onclick="switchApp('explorer',this)">
-        <span class="hub-tab-icon">ð</span> Stats Explorer
+        <span class="hub-tab-icon">&#128202;</span> Stats Explorer
       </button>
       <button class="hub-tab" data-app="stuffplus" onclick="switchApp('stuffplus',this)">
-        <span class="hub-tab-icon">ð¬</span> Stuff+ Leaderboard
+        <span class="hub-tab-icon">&#128300;</span> Stuff+ Leaderboard
       </button>
     </nav>
 
@@ -90,7 +90,7 @@
   </div>
 </div>
 
-<!-- âââ FETCH PROGRESS BAR (Stats Explorer only) ââââââââââââââââââââââââââââââ -->
+<!-- ═══ FETCH PROGRESS BAR (Stats Explorer only) ══════════════════════════════ -->
 <div id="fetch-wrap" class="hidden">
   <div id="fetch-bar"><div id="fetch-fill"></div></div>
   <div id="fetch-row">
@@ -100,7 +100,7 @@
   </div>
 </div>
 
-<!-- âââ SOURCE INFO BAR (Stats Explorer) âââââââââââââââââââââââââââââââââââââ -->
+<!-- ═══ SOURCE INFO BAR (Stats Explorer) ═════════════════════════════════════ -->
 <div class="src-bar" id="explorer-src-bar">
   <div class="src-bar-inner">
     <div style="display:flex;align-items:center;gap:6px">
@@ -116,9 +116,9 @@
   </div>
 </div>
 
-<!-- âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+<!-- ═══════════════════════════════════════════════════════════════════════════
      APP: STATS EXPLORER
-     âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
+     ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="app-explorer" class="app-section app-visible">
   <div class="app-explorer-inner">
     <aside class="sidebar">
@@ -265,9 +265,9 @@
   </footer>
 </section>
 
-<!-- âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+<!-- ═══════════════════════════════════════════════════════════════════════════
      APP: STUFF+ LEADERBOARD
-     âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ -->
+     ═══════════════════════════════════════════════════════════════════════════ -->
 <section id="app-stuffplus" class="app-section">
   <div class="sp-app">
     <div class="controls">
@@ -302,7 +302,7 @@
     <div class="sp-tbl-card">
       <div class="tbl-title-row">
         <div>
-          <div class="sp-tbl-title">Pitcher Stuff+ Grades <em>â Model Output</em></div>
+          <div class="sp-tbl-title">Pitcher Stuff+ Grades <em>&mdash; Model Output</em></div>
           <div class="tbl-sub">Whiff-probability model trained on <b>2020-2025 Statcast</b> pitch-level data. Grades on <b>100-centered scale</b> (100 = avg, 15-pt std dev).</div>
         </div>
         <div class="src-pills">
@@ -336,18 +336,5 @@
       </div>
       <div class="sp-tbl-footer">
         <span class="tbl-footer-text">Sources: Custom XGBoost whiff-probability model (pitch-type-specific) &middot; FanGraphs &middot; Baseball Savant</span>
-        <span class="tbl-footer-text" style="margin-left:auto">Grades: 100-centered scale (100 = avg, std = 15), probit-normalized per season</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-</div><!-- /.page -->
-
-
-<script src="js/navigation.js"></script>
-<script src="js/explorer.js"></script>
-<script src="js/leaderboard.js?v=20260412"></script>
-<script src="js/init.js"></script>
-</body>
-</html>
+        <span class="tbl-footer-text" style="margin-left:auto">Grades: 100-centered scale (100 = avg, std = 15�ؚ][�ܛX[^�Y\��X\�ۏ��[����]����]����]�����X�[ۏ����]��KKH˜Y�HKO�����ܚ\ܘ�H���ۘ]�Y�][ۋ��ȏ���ܚ\���ܚ\ܘ�H����^ܙ\���ȏ���ܚ\���ܚ\ܘ�H����XY\���\����ݏL���
+MH����ܚ\���ܚ\ܘ�H����[�]��ȏ���ܚ\��؛�O���[�
