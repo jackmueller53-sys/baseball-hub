@@ -145,490 +145,509 @@ function renderHistogram(filteredRows) {
     var x = padL + i * barW + barGap/2;
     var y = padT + chartH - barH;
     var w = barW - barGap;
-    html += '<rect�\��H�\�X�\��H��
-�
-�	ȈOH��
-�H
-�	Ȉ�YH��
-��
-�	ȈZY�H��
-��\�
-�	Ȉ�H���[H��
-�����܈
-�	Ȉ�X�]OH���H�ω�����[�X�ݙH�\��Y�
-����[��
-H[
-�H	�^H��
-�
-
-��̊H
-�	ȈOH��
-�
-HH
-JH
-�	Ȉ�\��H�\�X�\�X��[���[H��
-�����܈
-�	ȏ��
-�����[�
-�	��^��B����X��]X�[�[�[
-�H	�^H��
-�
-
-��̊H
-�	ȈOH��
-�
-Y
-��\�
-�N
-H
-�	Ȉ�\��H�\�X�\�[X�[���
-���X�[
-�	��^��JN���YX[�[�B��\�YX[��X��]H
-YX[�H
-L
-H�L����ܛX[^�H
-LLML�LB��\�YX[�HY
-�YX[��X��]
-��\��[
-�H	�[�HOH��
-�YX[�
-�	ȈLOH��
-�Y
-�	Ȉ�H��
-�YX[�
-�	ȈL�H��
-�
-Y
-��\�
-H
-�	Ȉ�\��H�\�[YX[�[[�H�ω�[
-�H	�^H��
-�YX[�
-�	ȈOH��
-�
-YH�H
-�	Ȉ^X[��܏H�ZYH��\��H�\�[YX[�[X�[��QPS�	�
-�YX[��њ^Y
-JH
-�	��^���ݙ˚[��\�SH[����[[X\�H�]�]�[�[��\�SB�	�]��\��H�\�\�]��]��\��H�\�\�]]�[���
-���ܙ\˛[��
-�	��]��]��\��H�\�\�][���]�\���]���]���
-	�]��\��H�\�\�]��]��\��H�\�\�]]�[���
-�YX[��њ^Y
-JH
-�	��]��]��\��H�\�\�][���YX[��]���]���
-	�]��\��H�\�\�]��]��\��H�\�\�]]�[���
-���њ^Y
-JH
-�	��]��]��\��H�\�\�][����]��]���]���
-	�]��\��H�\�\�]��]��\��H�\�\�]]�[���
-�X]�Z[��\J�[��ܙ\�K�њ^Y
-
-H
-�	��]��]��\��H�\�\�][���Z[��]���]���
-	�]��\��H�\�\�]��]��\��H�\�\�]]�[���
-�X]�X^�\J�[��ܙ\�K�њ^Y
-
-H
-�	��]��]��\��H�\�\�][���X^�]���]���B���[��[ۈ�Z[XY\��
-H�\�XYH��[Y[���][[Y[��RY
-	�XY	�N�\�[�HH��[Y[���][[Y[��RY
-	ݚY]�[[�I�K��[YN�\��H	���\��H�ܜZXY\�����H	���\��H���ZXY\������
-�H	����[�H�Ȉ�\��H�ܜZ[��ȏ�]�\�����
-�H	�]KX��H��[�ȏ�����]KX��H��[YH��[OH�^X[Yێ�Y����[YO��]KX��H��[]�\ȏ�]�\������
-�H	��\��H��\ZXY\�������
-�H	��\��H��\������
-�H	����[�H���\��H�ܜ[[�[���\��HЛ���[�[����
-�H	�]KX��H�ݙ\�[���Y�����]KX��H�\ȏ��Y�Y����]KX��H�]܈��X�X[�Y����]KX��H�Z^��Z^����Y�
-[�HOOH	ٝ[	�[�HOOH	���\\�\�ۉ�H�
-�H	��\��H��\ZXY\��������
-�H	��\��H��\������
-�H	����[�H�Ȉ�\��H�ܜ\X�Xȏ��[�ܘ\�[�[�����
-�H	�]KX��H����Y�����Y�����]KX��H����ȏ������]KX��H���]��]
-����B�Y�
-[�HOOH	ٝ[	�H�
-�H	��\��H��\ZXY\��������
-�H	��\��H��\������
-�H	����[�H�Ȉ�\��H�ܜ\X�Xȏ�X�X��]�����
-�H	�]KX��H�\�H��T�O��]KX��H��\���T��]KX��H�\�H��T�O��]KX��H������O��]KX��H��������O��]KX��H���ȏ����O��]KX��H��\����T����B��
-�H	�������
-�H	�����XY�[��\�SH�
-���XY�]Y\�T�[X�ܐ[
-	˘��ZXY\��]KX��I�K��ܑXX�
-�[��[ۊ
-H�Y]�[�\�[�\�	��X����[��[ۊ
-H�\���H�]\�]���Y�
-��OOH	�Z^	���OOH	ܘ[���H�]\��Y�
-��OOH	ۘ[YI�H��ܝ��H	ۘ[YI���ܝ\�H�ܝ\�OOH	�\����	�\����	�\����B�[�H�Y�
-�ܝ��OOH��
-H�ܝ\�H�ܝ\�OOH	�\����	�\����	�\����[�H��ܝ��H����ܝ\�H	�\����HB��[�\�X�J
-NJNJNB���[��[ۈ�[�\�X�J
-H�\�[�HH��[Y[���][[Y[��RY
-	ݚY]�[[�I�K��[YN�\�Z[�H\��R[�
-��[Y[���][[Y[��RY
-	�Z[�\]�\��K��[YJH�\�HH��[Y[���][[Y[��RY
-	��X\��	�K��[YK����\��\�J
-K��[J
-N�Z[XY\��
-N��\�����H[���˙�[\��[��[ۊ�HY�
-���X\�ۈOOHX�]�T�X\�ۊH�]\���[�NY�
-���[]�\�Z[�
-H�]\���[�NY�
-H	�����[YK����\��\�J
-K�[�^يJHOOHLH	��
-��X[_	��K����\��\�J
-K�[�^يJHOOHLJH�]\���[�N�]\���YNJN����˜�ܝ
-�[��[ۊK�H�\�]�HV��ܝ��K��H���ܝ��N���܈	�ݙ\�[	��ܝ�Y��\��H[�[ܘYH\��[�[�X������Y���Y�
-�ܝ��OOH	�ݙ\�[	�HY�
-]�OH�[
-H]�HK����Y��Y�
-��OH�[
-H��H�����Y��B�Y�
-�ܝ��OOH	ۘ[YI�H��]\���ܝ\�OOH	�\����
-]�	��K���[P��\\�J��	��H�
-��	��K���[P��\\�J]�	��N�B�Y�
-]�OH�[
-H]�HR[��[�]N�Y�
-��OH�[
-H��HR[��[�]N�]\���ܝ\�OOH	�\������H]��]�H��JN���[Y[��]Y\�T�[X�ܐ[
-	˘��ZXY\�	�K��ܑXX�
-�[��[ۊ
-H��\��\���[[ݙJ	��ܝYX\���	��ܝYY\���NY�
-�]\�]���OOH�ܝ��
-H��\��\��Y
-�ܝ\�OOH	�\����	��ܝYX\����	��ܝYY\���NJN����ܙH�[\�Y�����܈�X��[�\�X��\��[��˗��Y������H������\�H	���܈
-�\�HH�H���˛[���J��H�\��H�����WN
-�H	���[OH��\��܎��[�\��ۘ�X��H��[��Y��^Y\��\�
-	��J��H���
-�H	��\��H��ȏ��
-�
-J�JH
-�	����
-�H	��\��H��H���
-����[YH
-�	��[��\��H�X[H���
-�
-��X[_	��H
-�	���[�����
-�H	��\��H�X����
-����[]�\˝���[T��[��
-H
-�	����
-�H	��\��H��\�����������\��H[�[ܘYHY�]�Z[X�N��܈�����[ۛH����������Y����]	ٙ��X\��\��Y�
-��ݙ\�[OH�[
-H
-�H	���
-��]ܘYJ��ݙ\�[	�ܘYK[ݙ\�[	�H
-�	����H[�HY�
-�����Y��OH�[
-H
-�H	���
-��]ܘYJ�����Y��	�ܘYK[ݙ\�[	�H
-�	��[��\��H���]YȈ]OH��[�ܘ\�[�[
-�\��H[�[[�[��H������[�����H[�H
-�H	���
-��]ܘYJ�[
-H
-�	����B�
-�H	���
-��]X���\�	��	�H
-�	����
-�H	���
-��]X���]܋	��	�H
-�	����
-�H	���
-�]�Z^
-�H
-�	����Y�
-[�HOOH	ٝ[	�[�HOOH	���\\�\�ۉ�H
-�H	��\��H��\�����
-�H	���
-��]X��������Y��H
-�	����
-�H	���
-��]X���������H
-�	����
-�H	���
-��]X�������]
-H
-�	����B�Y�
-[�HOOH	ٝ[	�H
-�H	��\��H��\�����
-�H	���
-��]X���\�K	�X̉�H
-�	����
-�H	���
-��]X����\	�X̉�H
-�	����
-�H	���
-��]X���\�K	�X̉�H
-�	����
-�H	���
-��]X�����	��	�H
-�	����
-�H	���
-��]X������	��	�H
-�	����
-�H	���
-��]X������	��	�H
-�	����
-�H	���
-��]X����\�	�X�I�H
-�	����B�
-�H	�����B���[Y[���][[Y[��RY
-	���I�K�[��\�SH��[Y[���][[Y[��RY
-	���[�X�Y�I�K�[��\�SH	����
-����˛[��
-�	�؏�]�\�����[Y[���][[Y[��RY
-	��Y[���K��[K�\�^HH	ۛۙI���[Y[���][[Y[��RY
-	���K��[K�\�^HH	���[�\�\��ܘ[J����NB������Y�H���H�Y�������X��8����\�Y�[�^Y\��\�[�[��[��[ۈ�[��Y��^Y\��\�
-Y
-^�\��H�[��˗��Y������	���[��˗��Y�������YNY�\�H�]\�����Z[H^Y\�ؚ�X���\]X�H�]�[�^Y\��\�
-^Y\��]�\�ȊB��\�^Y\�H�[YN����[YK�X[N���X[K�[�[W�Y���]�\��[�\�N���\�K��\����\��\����\�\�N���\�K��\�����\��\���\���������OH�[�����
-�L��[�����������OH�[������
-�L��[���Έ�����OH�[������
-�L��[������������OH�[�������
-�L��[���N������Y���\Έ��ݙ\�[OH�[���ݙ\�[������Y�����][ۗ�\Έ�������]�[���\Έ����]�\Έ��\��]܎���]܂�NY�\[و�[�^Y\��\�OOH	ٝ[��[ۉ�^�[�^Y\��\�
-^Y\��]�\�ȊK��]�
-�[��[ۊJ^��ۜ��K�\��܊��Y����\�\��܎��JN�JNB�B����8� 8� �Q�������UP�UH�QT�8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ����Y�����Y���]H���H�]X���ӈ�[\�
-�\��H[�[�]]܈���[�X��K�����Y\�]K��Y��\�X�\��K���ۈ�\��
-�\��HЛ����]]
-K[�]Kٙ�\�Y��\˚��ۂ�\�[���[��[ۈ�Y����Y��\�
-H�\��]\�[H��[Y[���][[Y[��RY
-	��Y[���N�\�ܚY�[H�]\�[��]\�[�[��\�S�	���H���H�\��H[�[�]]�\����H�ۜ��\�H]�Z]�]�
-	�]K��Y��\�X�\��K���ۉ�NY�
-�\����H�ۜ�]HH]�Z]�\����ۊ
-N��]H��[�H[��U��UH�ܛX]������������Ό���ݎ�������WB��ۜ����̌��H]K��[\��O����OOH���NY�
-���̌���[���
-H��Y\��H[��[�����۝�\�[���H�ܛX]�Y]J
-H��X�\���̌����ܑXX�
-�[��[ۊ�H[���˜\�
-]�\�����[YN����	�[�ۛ�ۉ�X[N���	���X\�ێ�����ݙ\�[���݋���������Έ����ٙ����ً��[]�\Έ����]�\Έ������]�\Έ���ٙ�]�\Έ����\�N���\�K�\����\�\����\�N���\����������������ؘ�����ؘ��\�����\����Έ���������������\���\����Y�����������Έ������]������\Έ��\�OH�[���\���[�]܎���]܈OH�[���]܈��[����\��N���\��W�[�[��JNJN�ۜ��K���	���Y���H�YY	�
-����̌���[��
-�	��\��H[�[�����܈����N���Y\��HX�X��]�
-T�K�TT�K�K��K���K�T�T
-B������H��\�Y��\˚��ۈ[��H�\��H[�[����X]�Y�HS�SHQ���H�ۜ��ԙ\�H]�Z]�]�
-	�]Kٙ�\�Y��\˚��ۉ�NY�
-�ԙ\����H�ۜ���]HH]�Z]�ԙ\����ۊ
-N�ۜ��ОRYH�N��]K��ܑXX�
-�[��[ۊ��H�ۜ�YH�˞S�SRQ�˜^Y\�YY�
-Y
-H�ОRY���[��Y
-WHH��JN�\�Y\��YH[���˙�ܑXX�
-�[��[ۊ�HY�
-���X\�ۈOOH��������\��HOOH	��\��W�[�[	�H�]\���ۜ���H�ОRY���[����]�\�WNY�
-Y��H�]\��Y�
-��\�HOH�[	���ˑT�HOH�[
-H��\�HH\��Q��]
-�ˑT�JNY�
-���\OH�[	���ˑ�TOH�[
-H���\H\��Q��]
-�ˑ�T
-NY�
-��\�HOH�[	���˞T�HOH�[
-H��\�HH\��Q��]
-�˞T�JNY�
-����OH�[	�������I�HOH�[
-H����H\��Q��]
-�����I�JNY�
-�����OH�[	�����А�I�HOH�[
-H�����H\��Q��]
-���А�I�JNY�
-�����OH�[	������������I�HOH�[
-H�����H\��Q��]
-����������I�JNY�
-���\�OH�[	���˕�T�OH�[
-H���\�H\��Q��]
-�˕�T�NY�
-��\OH�[	���˒TOH�[
-H��\H\��Q��]
-�˒T
-NY\��Y
-��JN�ۜ��K���	���Y���HY\��YX�X��]��܈	�
-�Y\��Y
-�	�]�\�����H���NB�H�]�
-JH��ۜ��K��\��	���Y���H��[��Y\��HX�X��]Ή�K�Y\��Y�JN�B���]\���YNB�B�H�]�
-JH��ۜ��K��\��	���Y���H�\��H[�[]H��]�Z[X�N��K�Y\��Y�JN�B�����[�X�Έ�Y�[�ܘ\��Y���]B��H�ۜ��\�H]�Z]�]�
-	�]Kٙ�\�Y��\˚��ۉ�NY�
-�\����H�ۜ���]HH]�Z]�\����ۊ
-NY�
-��]K�[���
-H��]K��ܑXX�
-�[��[ۊ��H��^�X��[YH���HS�H�Y�H�������[YO�O���\��[YHH
-�˓�[YH�˔^Y\��[YH	��K��\X�J�׏�J����	��K��[J
-N�\�X[HH
-�˕X[H�˕X[S�[YPX��	��K��\X�J�׏�J����	��K��[J
-NY�
-X[HOOH	�HHI�X[HOOH	�KKI�HX[HH	���[���˜\�
-]�\���˞S�SRQ�˜^Y\�Y��[YN��[YK�X[N�X[K��X\�ێ��˔�X\�ۈ������ԒUP�S�ݙ\�[\��S\�H8�%\�\�H�\��HЛ�����[[��������Y�����\�ӓH[�����Y���܈H�[�ܘ\���\\�\�ۈ��[[������\��H[�[��ܙ\���YH���H]K��Y��\�X�\��K���ۈ
-��\]Y�H��\]W��Y��\˜JK��ݙ\�[��[�����[��Έ�[ٙ���[��[]�\Έ�˔]�\���]�\Έ���]�\Έٙ�]�\Έ�\�N��ˑT�K�\��ˑ�T�\��˞�T\�N��˞T�K���������I�HOH�[������I�H
-�L��[��������А�I�HOH�[����А�I�H
-�L��[�ؘ��������P��I�HOH�[������P��I�H
-�L��[��\���˕�T����Έ����������I�HOH�[�����������I�H
-�L��[��������������I�HOH�[���������I�H
-�L��[�\��˒T����Y����˜���Y�����Έ�˜����][ۋ��]��˜��]�[���\Έ�[]܎��[����\��N���[�ܘ\���Y��\Ȃ�JNJN�ۜ��K���	���Y���H�YY	�
-���]K�[��
-�	����Y��������܈����N�]\���YNB�B�H�]�
-JH��ۜ��K��\��	���Y���H���Y���]H��]�Z[X�N��K�Y\��Y�JN�B���]\���[�NH�]�
-JH�ۜ��K�\��܊	���Y���H\��܎��K�Y\��Y�JN�]\���[�NB�B����8� 8� �Q������U�H�U�8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ���X\�H�[�ܘ\�]�[���
-\OL͊H���\�H\ON���[���\��Y����ܛX]������\OL͈�Y[Έ��Y��ȋ���][ۊȋ�]�[��ȋT�K��KT�K�T�T�����ԒUP�S��܈����H���]�H�\��HЛ���[�[��ܙ\�Y]���������Y���\��ܙY[����Y���܈��\\�\�ۋ�]H�\��H[�[	�ݙ\�[	��ܘYH\��[�HX�H�X\�H\�[��Z\�\���\��H[�[�����[�ܘ\�[�[����[��[ۈX\���Y�������������^���[�ܘ\��Y����Y[8�%�H�]�\�[���X�H�[Y\�ۜ����Y���[HX]���[�
-�������Ȝ���Y���H����Ȕ�Y��ȗH����Ȝ�Y���\ȗH����Ȕ�Y��\ȗJH�
-NY�Y���Y���[
-H�]\���[�����\�����\�H���Y���\�Z\��[��ޙ\���ۜ�����HX]���[�
-������Ȝ����][ۈ�H����ȓ��][ۊȗH����ț��][ۗ�\ȗH����ȓ��][۔\ȗJHL
-N�ۜ���]HX]���[�
-������Ȝ��]�[�ȗH����Ȕ]�[��ȗH����Ȝ]�[���\ȗH����Ȕ]�[��\ȗJHL
-N�����[�[����Y][ۘ[�]����H����
-\ON
-B��ۜ��H���������ۜ�\H���ȒT�_�Ț\�JH������ȒT�_����Ț\�JH�ۜ�\�HH���ȑT�H�_�ș\�H�JH������ȑT�H�_����ș\�H�JN�ۜ��\H���ȑ�T�_�ș�\�JH������ȑ�T�_����ș�\�JN�ۜ��\�H���ȕ�T��_�ȝ�\��JH������ȕ�T��_����ȝ�\��JN�ۜ��H�
-�Ȓ�H�_�Ȕ��H�JH�
-����Ȓ�H�_����Ȕ��H�JN�ۜ���H�
-�Ȑ��H�JH�
-����Ȑ��H�JN�ۜ�ؘ�H
-�O[�[	����O[�[
-H�X]���[�
 
-�H��
-J�L
-K�L��[����[]�\����HT
-��Y���MH]�\�\�T
-B��ۜ�H\�X]���[�
-\
-�MJH���ۜ�X[T�]�H
-�ȕX[H�_�ȝX[H�_����ȕX[H�_����ȝX[H�_��N�ۜ�X[HH
-X[T�]�OOH�HHH�X[T�]�OOH�KKH�X[T�]�OOH���H����X[T�]���]\��]�\��������ȞS�SRQ�_����ȓS�SRQ�_�ȞS�SRQ�_�ȓS�SRQ�JH�[��[YN���\S
-����ȓ�[YH�_����Ȕ^Y\��[YH�_�ȓ�[YH�_��K�X[K��X\�ێ��������\��H[�[�����ܙ\��܈���Y]
-[�[\ۉ��Y[��[�ۈ�]��X\�ۈ]JB�ݙ\�[��[����[��Έ�[ٙ���[�\Έ�[]܎��[��[]�\Έ���]�\ΈX]���[�
-
-��
-JK����]�\ΈX]���[�
-
-���
-K�ٙ�]�\ΈX]���[�
-
-���JK�\�N�\�K�\��\�\��[\�N��[�����O[�[���L��[�������O[�[����L��[�ؘ���ؘ�O[�[�ؘ��L��[��\���\����Έ�[������[�\�\����Y������Y���[���[�ܘ\��Y���
-Z\�[�[���\��B����Έ�������]���]����\��N�����]�H��NB����\�[�Έ�Y����Y���U�H���H�[�ܘ\��XH�Ԕ���H�Z[�����\�\�H�[YH��Q�]�
+    html += '<rect class="hist-bar" x="' + x + '" y="' + y + '" width="' + w + '" height="' + barH + '" rx="4" fill="' + b.color + '" opacity=".75"/>';
+    // Count above bar
+    if (b.count > 0) {
+      html += '<text x="' + (x + w/2) + '" y="' + (y - 5) + '" class="hist-bar-count" fill="' + b.color + '">' + b.count + '</text>';
+    }
+    // Bucket label below
+    html += '<text x="' + (x + w/2) + '" y="' + (padT + chartH + 18) + '" class="hist-bar-label">' + b.label + '</text>';
+  });
 
-H
-��]����Y��\�
-H
-��]���
-H�[��[ۜ��Y�[�Y[�^ܙ\����
-�YY�Y�ܙHXY\���\����K��\�[���[��[ۈ�Y����Y��\�]�J
-^�\��]\�[H��[Y[���][[Y[��RY
-	��Y[���N�\�ܚY�[H�]\�[��]\�[�[��\�S�	���HY��]\�[
-H�]\�[�[��\�SH	�]��[OH�Y[�ΌL�ٛ۝Y�[Z[N��\�KY�
-Nٛ۝\�^�N�L\�]\�\�X�[�ΌK�\���܎��\�KY�̊N�^]�[�ٛܛN�\\��\�H���Y[������Y���]x�)��]������8� 8� �]�]�H���H�[�ܘ\��XH�Ԕ���H�Z[�8� 8� ��\��H�K�H�N��ۜ��K������Y��̌��H�]�[�����Y���
-\OL͊H�XH�Ԕ���K����N�H��H]�Z]�]����Y��\����N�B��]�
-J^��ۜ��K�\��܊���Y��̌��H���Y����]�\��܎��K�Y\��Y�JN�B���ۜ��K������Y��̌��H�]�[����]�[��
-\ON
-H�XH�Ԕ���K����N�H��H]�Z]�]�������]�K�JN�B��]�
-J^��ۜ��K�\��܊���Y��̌��H��]�[���]�\��܎��K�Y\��Y�JN�B���ۜ��K������Y��̌��H�\�[Έ�Y�������H�
-���[��
-���[�\�����H�
-���[��
-NY���[���
-H�ۜ��K������Y��̌��H�[\H�Y�������Y[Έ�ؚ�X���^\���JK��X�JMJK���[���JN���Y�\OL͈
-�Y���H�]\��������]\ON
-�[�\�
-H\�]K���ܙX]H�[[Z[�\�H[��Y\�\�[���[�\�]�[���]˂�Y�\��[��	����[���
-^�ۜ��K��\�����Y��̌��H�Y���
-\OL͊H�]\��Y����8�%\�[���[�\��]�\��[[Z[�\�H[��Y\ȊN[����H[���˙�[\��[��[ۊ�^��]\�����X\�ۈOOH����JN�\�YYH���ܑXX�
-�[��[ۊ�^�\�\H���ȒT�_�Ț\�JHY�\�JH�]\���\��[YHH��\S
-�ȓ�[YH�_�Ȕ^Y\��[YH�_��NY�[�[YJH�]\���\�X[T�]�H�ȕX[H�_�ȝX[H�_���\�X[HH
-X[T�]�OOH�HHH�X[T�]�OOH�KKH�X[T�]�OOH���H����X[T�]��\�H\�X]���[�
-\
-�MJH�[���˜\�
-]�\�����ȞS�SRQ�_�ȓS�SRQ�JH�[��[YN��[YKX[N�X[K�X\�ێ�����ݙ\�[��[����[��Έ�[ٙ���[\Έ�[]܎��[��[]�\Έ��]�\ΈX]���[�
-
-��
-JK���]�\ΈX]���[�
-
-���
-Kٙ�]�\ΈX]���[�
-
-���JK�\�N����ȑT�H�_�ș\�H�JK�\����ȑ�T�_�ș�\�JK��\����Ȟ�T�_�Ȟ�\�JK\�N��[�����
-�Ȓ�H�_�Ȕ��H�JHOH�[��
-�Ȓ�H�_�Ȕ��H�JK�L��[������
-�Ȑ��H�JHOH�[��
-�Ȑ��H�JK�L��[�ؘ����[�\�����ȕ�T��_�ȝ�\��JK���Έ�[������[\�\����Y����[���Έ�[��]��[����\��N�������ۛH��JNYY
-��JN�ۜ��K������Y��̌��H[��X�Y��YY
-Ȉ�[[Z[�\�H�������
-�[�\��]�ۛJH�NY�YY�
-^�Z[�X\�ەX��
-NX�]�T�X\�ۈH�����[Y[��]Y\�T�[X�ܐ[
-	���\�X\�ۋ]X����X��K��ܑXX�
-�[��[ۊ�^���\��\�����J	�X�]�I�\��R[�
-��^�۝[�
-OOOL���NJN��[Y[��]Y\�T�[X�ܐ[
-	���\�X\�ۋ]X����X��K��ܑXX�
-�[��[ۊ�^Y�\��R[�
-��^�۝[�
-OOOL���	��X��]Y\�T�[X�܊	˛]�KY�	�J^�\��H��[Y[��ܙX]Q[[Y[�
-	��[��N���\�Ә[YHH	�]�KY�	����[K����^H	�\�^N�[�[�KX������Y���ZY���ؘX��ܛ�[��ٍXM���؛ܙ\�\�Y]\΍L	N�X\��[�[Y��\ݙ\�X�[X[Yێ�ZYN�[�[X][ێ��[��K�\�[��[�]I���]HH	��[[Z[�\�H]H8�%�Y���ܘY\���Y]]�Z[X�I���\[��[
-�
-NB�JN�[�\�X�J
-NB�Y��]\�[	���]\�[�[��\�S�[��Y\�	�]�H�Y���JH�]\�[�[��\�SHܚY�[�]\��B��Y�\��[��
-^�ۜ��K��\�����Y��̌��H���]\��Y�����܈��\OL͈[�\ON8�%���X�[�]�Z[X�H�NY��]\�[
-H�]\�[�[��\�SHܚY�[�]\��B�����Z[�[YKZ�^YY���\�܈�����ۜ��YH�N���ܑXX�
-�[��[ۊ�^��ۜ��H�ܛS�[YJ��\S
-�ȓ�[YH�_�Ȕ^Y\��[YH�_��JN�Y��H�Y��O\��JN����[[ݙH[�H�KY^\�[��������[����H[���˙�[\��[��[ۊ�^��]\�����X\�ۈOOH����JN���X\[�Y��\�YYH���ܑXX�
-�[��[ۊ�^�ۜ��H�ܛS�[YJ��\S
-�ȓ�[YH�_�Ȕ^Y\��[YH�_��JN�ۜ�X\YHX\���Y�������Y��_�[
-NY�X\Y	��X\Y��[YJ^[���˜\�
-X\Y
-NYY
-��B�JN��ۜ��K������Y��̌��H[��X�Y��YY
-Ȉ]�H�������[���Y���XY\���\��N�Y�YY�
-^�Z[�X\�ەX��
-NX�]�T�X\�ۈH����\��[�^L���H�]�]J����L�L���N�\�^\�[����HX]�X^
-X]���܊
-�]�]J
-HH�[�^L���H�
-�
-JN�\�Z[�]��[H^\�[����
-���^\�[������L�^\�[����
-����
-��[Y[���][[Y[��RY
-	�Z[�\]�\��K��[YHHZ[�]��[��[Y[��]Y\�T�[X�ܐ[
-	���\�X\�ۋ]X����X��K��ܑXX�
-�[��[ۊ�^���\��\�����J	�X�]�I�\��R[�
-��^�۝[�
-HOOH���NJN��[Y[��]Y\�T�[X�ܐ[
-	���\�X\�ۋ]X����X��K��ܑXX�
-�[��[ۊ�^Y�\��R[�
-��^�۝[�
-OOOL���	��X��]Y\�T�[X�܊	˛]�KY�	�J^�\��H��[Y[��ܙX]Q[[Y[�
-	��[��N���\�Ә[YHH	�]�KY�	����[K����^H	�\�^N�[�[�KX������Y���ZY���ؘX��ܛ�[���
+  // Mean line
+  var meanBucket = (mean - 50) / 100; // normalize 50-150 to 0-1
+  var meanX = padL + meanBucket * chartW;
+  html += '<line x1="' + meanX + '" y1="' + padT + '" x2="' + meanX + '" y2="' + (padT+chartH) + '" class="hist-mean-line"/>';
+  html += '<text x="' + meanX + '" y="' + (padT - 2) + '" text-anchor="middle" class="hist-mean-label">MEAN ' + mean.toFixed(1) + '</text>';
 
-�
-M�؛ܙ\�\�Y]\΍L	N�X\��[�[Y��\ݙ\�X�[X[Yێ�ZYN�[�[X][ێ��[��K�\�[��[�]I���\[��[
-�
-NB�JN�[�\�X�J
-NB�Y��]\�[	���]\�[�[��\�S�[��Y\�	�]�H�Y���JH�]\�[�[��\�SHܚY�[�H�]�
-J^�ۜ��K�\��܊���Y��̌��H]�H�]��Z[Y��K�Y\��Y�JNY��]\�[	���]\�[�[��\�S�[��Y\�	�]�H�Y���JH�]\�[�[��\�SHܚY�[B�B���[��[ۈ[�]
+  svg.innerHTML = html;
 
-H�\���H�Y]J
-NY�
-[��H��[Y[���][[Y[��RY
-	��Y[���K�[��\�SH	�]��\��H�\��܋[\�ȏ���[���Y�Y���]K��U��UH\�Z\��[��܈�ܜ�\Y��]����]\��B��Z[�X\�ەX��
-N�[�\�X�J
-N��[Y[���][[Y[��RY
-	��X\��	�K�Y]�[�\�[�\�	�[�]	��[�\�X�JN��[Y[���][[Y[��RY
-	�Z[�\]�\��K�Y]�[�\�[�\�	��[��I��[�\�X�JN��[Y[���][[Y[��RY
-	ݚY]�[[�I�K�Y]�[�\�[�\�	��[��I��[�\�X�JN���\�[��[�Y����Y���]N��H�]X��[\��\��[�]�H�]��
-\�[���[��[ۊ
-H�\��YYH]�Z]�Y����Y��\�
-NY�
-�YY
-H���]X��[\���[�[��YY8�%�X�Z[X��[��K\�[�\���Z[�X\�ەX��
-NX�]�T�X\�ۈH�����[Y[��]Y\�T�[X�ܐ[
-	���\�X\�ۋ]X����X��K��ܑXX�
-�[��[ۊ�H���\��\�����J	�X�]�I�\��R[�
-��^�۝[�
-HOOH���NJN�[�\�X�J
-NH[�H���]X��[\���]�Z[X�H8�%�H]�H�]�\��[�X��][Y[�]
-�Y����Y��\�]�K
-NB�JJ
-NJJ
-N
+  // Summary stats
+  statsEl.innerHTML =
+    '<div class="hist-stat"><div class="hist-stat-val">' + scores.length + '</div><div class="hist-stat-lbl">Pitchers</div></div>' +
+    '<div class="hist-stat"><div class="hist-stat-val">' + mean.toFixed(1) + '</div><div class="hist-stat-lbl">Mean</div></div>' +
+    '<div class="hist-stat"><div class="hist-stat-val">' + std.toFixed(1) + '</div><div class="hist-stat-lbl">Std Dev</div></div>' +
+    '<div class="hist-stat"><div class="hist-stat-val">' + Math.min.apply(null,scores).toFixed(0) + '</div><div class="hist-stat-lbl">Min</div></div>' +
+    '<div class="hist-stat"><div class="hist-stat-val">' + Math.max.apply(null,scores).toFixed(0) + '</div><div class="hist-stat-lbl">Max</div></div>';
+}
+
+function buildHeaders() {
+  var thead = document.getElementById('thead');
+  var mode = document.getElementById('view-mode').value;
+  var g = '<tr class="grp-header">', c = '<tr class="col-header">';
+
+  g += '<th colspan="3" class="grp-info">Pitcher</th>';
+  c += '<th data-col="rank">RK</th><th data-col="name" style="text-align:left">Name</th><th data-col="totalPitches">Pitches</th>';
+
+  g += '<th class="sep-header"></th>';
+  c += '<td class="sep"></td>';
+  g += '<th colspan="4" class="grp-model">Custom XGBoost Model</th>';
+  c += '<th data-col="overall">Stuff+</th><th data-col="apw">Pred Whiff</th><th data-col="awr">Actual Whiff</th><th data-col="mix">Mix</th>';
+
+  if (mode === 'full' || mode === 'comparison') {
+    g += '<th class="sep-header"></th>'; c += '<td class="sep"></td>';
+    g += '<th colspan="3" class="grp-public">FanGraphs Models</th>';
+    c += '<th data-col="fgStuff">Stuff+</th><th data-col="fgLoc">Loc+</th><th data-col="fgPit">Pit+</th>';
+  }
+  if (mode === 'full') {
+    g += '<th class="sep-header"></th>'; c += '<td class="sep"></td>';
+    g += '<th colspan="7" class="grp-public">Public Stats</th>';
+    c += '<th data-col="era">ERA</th><th data-col="fip">FIP</th><th data-col="xera">xERA</th><th data-col="kpct">K%</th><th data-col="bbpct">BB%</th><th data-col="csw">CSW%</th><th data-col="war">WAR</th>';
+  }
+  g += '</tr>'; c += '</tr>';
+  thead.innerHTML = g + c;
+
+  thead.querySelectorAll('.col-header th[data-col]').forEach(function(th) {
+    th.addEventListener('click', function() {
+      var col = th.dataset.col;
+      if (col === 'mix' || col === 'rank') return;
+      if (col === 'name') { sortCol = 'name'; sortDir = sortDir === 'asc' ? 'desc' : 'asc'; }
+      else { if (sortCol === col) sortDir = sortDir === 'desc' ? 'asc' : 'desc'; else { sortCol = col; sortDir = 'desc'; } }
+      renderTable();
+    });
+  });
+}
+
+function renderTable() {
+  var mode = document.getElementById('view-mode').value;
+  var minP = parseInt(document.getElementById('min-pitches').value) || 0;
+  var q = document.getElementById('search').value.toLowerCase().trim();
+  buildHeaders();
+
+  var rows = allRows.filter(function(r) {
+    if (r.season !== activeSeason) return false;
+    if (r.totalPitches < minP) return false;
+    if (q && r.name.toLowerCase().indexOf(q) === -1 && (r.team||'').toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+
+  rows.sort(function(a, b) {
+    var av = a[sortCol], bv = b[sortCol];
+    // For 'overall' sort: if custom model grade is null, fall back to fgStuff
+    if (sortCol === 'overall') {
+      if (av == null) av = a.fgStuff;
+      if (bv == null) bv = b.fgStuff;
+    }
+    if (sortCol === 'name') { return sortDir === 'asc' ? (av||'').localeCompare(bv||'') : (bv||'').localeCompare(av||''); }
+    if (av == null) av = -Infinity; if (bv == null) bv = -Infinity;
+    return sortDir === 'desc' ? bv - av : av - bv;
+  });
+
+  document.querySelectorAll('.col-header th').forEach(function(th) {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.col === sortCol) th.classList.add(sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+  });
+
+  // Store filtered rows for click handler access
+  window._stuffRows = rows;
+
+  var h = '';
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    h += '<tr style="cursor:pointer" onclick="openStuffPlayerCard('+i+')">';
+    h += '<td class="rk">' + (i+1) + '</td>';
+    h += '<td class="nm">' + r.name + '<span class="team">' + (r.team||'') + '</span></td>';
+    h += '<td class="pub">' + r.totalPitches.toLocaleString() + '</td>';
+    h += '<td class="sep"></td>';
+    // Show custom model grade if available; for 2026 FG-only rows, show FG Stuff+ with 'fg' marker
+    if (r.overall != null) {
+      h += '<td>' + fmtGrade(r.overall,'grade-overall') + '</td>';
+    } else if (r.fgStuff != null) {
+      h += '<td>' + fmtGrade(r.fgStuff,'grade-overall') + '<span class="fg-tag" title="FanGraphs model (custom model pending)">FG</span></td>';
+    } else {
+      h += '<td>' + fmtGrade(null) + '</td>';
+    }
+    h += '<td>' + fmtPub(r.apw, 'pct') + '</td>';
+    h += '<td>' + fmtPub(r.awr, 'pct') + '</td>';
+    h += '<td>' + pitchMix(r) + '</td>';
+    if (mode === 'full' || mode === 'comparison') {
+      h += '<td class="sep"></td>';
+      h += '<td>' + fmtPubFG(r.fgStuff) + '</td>';
+      h += '<td>' + fmtPubFG(r.fgLoc) + '</td>';
+      h += '<td>' + fmtPubFG(r.fgPit) + '</td>';
+    }
+    if (mode === 'full') {
+      h += '<td class="sep"></td>';
+      h += '<td>' + fmtPub(r.era,'dec2') + '</td>';
+      h += '<td>' + fmtPub(r.fip,'dec2') + '</td>';
+      h += '<td>' + fmtPub(r.xera,'dec2') + '</td>';
+      h += '<td>' + fmtPub(r.kpct,'pct') + '</td>';
+      h += '<td>' + fmtPub(r.bbpct,'pct') + '</td>';
+      h += '<td>' + fmtPub(r.csw,'pct') + '</td>';
+      h += '<td>' + fmtPub(r.war,'dec1') + '</td>';
+    }
+    h += '</tr>';
+  }
+  document.getElementById('tbody').innerHTML = h;
+  document.getElementById('count-badge').innerHTML = '<b>' + rows.length + '</b> pitchers';
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('lb').style.display = '';
+  renderHistogram(rows);
+}
+
+// Bridge from Stuff+ row click → shared openPlayerCard modal
+function openStuffPlayerCard(idx){
+  var r = window._stuffRows && window._stuffRows[idx];
+  if(!r) return;
+  // Build a player object compatible with openPlayerCard(player, "pitchers")
+  var player = {
+    name:     r.name,
+    team:     r.team,
+    mlbam_id: r.pitcher || null,
+    era:      r.era,
+    fip:      r.fip,
+    xfip:     r.xfip,
+    xera:     r.xera,
+    war:      r.war,
+    ip:       r.ip,
+    k_pct:    r.kpct != null ? r.kpct * 100 : null,
+    bb_pct:   r.bbpct != null ? r.bbpct * 100 : null,
+    csw:      r.csw != null ? r.csw * 100 : null,
+    swstr:    r.swstr != null ? r.swstr * 100 : null,
+    role:     "SP",
+    stuff_plus:    r.overall != null ? r.overall : r.fgStuff,
+    location_plus: r.fgLoc,
+    pitching_plus: r.fgPit,
+    apw:           r.apw,
+    awr:           r.awr
+  };
+  if(typeof openPlayerCard === 'function'){
+    openPlayerCard(player, "pitchers").catch(function(e){ console.error("Stuff+ card error:", e); });
+  }
+}
+
+// ── STUFF+ 2026 STATIC DATA LOADER ───────────────────────────────────────────
+// Loads 2026 Stuff+ data from static JSON files (custom model output or FG fallback).
+// Tries data/stuffplus-custom.json first (custom XGBoost output), then data/fg-stuffplus.json
+async function load2026StuffPlus() {
+  var statusEl = document.getElementById('loading');
+  var origHtml = statusEl ? statusEl.innerHTML : '';
+  try {
+    // Try custom model output first
+    try {
+      const resp = await fetch('data/stuffplus-custom.json');
+      if (resp.ok) {
+        const data = await resp.json();
+        // data should be in RAW_DATA format: [{p:..., n:..., s:2026, ov:..., ...}]
+        const rows2026 = data.filter(r => r.s === 2026);
+        if (rows2026.length > 0) {
+          // Merge into allRows, converting to the format loadData() produces
+          rows2026.forEach(function(r) {
+            allRows.push({
+              pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
+              overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
+              totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
+              era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
+              kpct: r.kp, bbpct: r.bbp, kbbpct: r.kbb, war: r.war,
+              csw: r.csw, swstr: r.sws, ip: r.ip,
+              fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp,
+              apw: r.apw != null ? r.apw : null,
+              awr: r.awr != null ? r.awr : null,
+              _source: "custom_model"
+            });
+          });
+          console.log('[load2026] Loaded ' + rows2026.length + ' custom model rows for 2026');
+
+          // Merge public stats (ERA, FIP, xERA, K%, BB%, CSW%, WAR, IP)
+          // from fg-stuffplus.json into the custom model rows, matched by MLBAM ID.
+          try {
+            const fgResp = await fetch('data/fg-stuffplus.json');
+            if (fgResp.ok) {
+              const fgData = await fgResp.json();
+              const fgById = {};
+              fgData.forEach(function(fg) {
+                const id = fg.xMLBAMID || fg.playerid;
+                if (id) fgById[String(id)] = fg;
+              });
+              var merged = 0;
+              allRows.forEach(function(r) {
+                if (r.season !== 2026 || r._source !== 'custom_model') return;
+                const fg = fgById[String(r.pitcher)];
+                if (!fg) return;
+                if (r.era   == null && fg.ERA         != null) r.era   = parseFloat(fg.ERA);
+                if (r.fip   == null && fg.FIP         != null) r.fip   = parseFloat(fg.FIP);
+                if (r.xera  == null && fg.xERA        != null) r.xera  = parseFloat(fg.xERA);
+                if (r.kpct  == null && fg['K%']       != null) r.kpct  = parseFloat(fg['K%']);
+                if (r.bbpct == null && fg['BB%']      != null) r.bbpct = parseFloat(fg['BB%']);
+                if (r.csw   == null && fg['C+SwStr%'] != null) r.csw   = parseFloat(fg['C+SwStr%']);
+                if (r.war   == null && fg.WAR         != null) r.war   = parseFloat(fg.WAR);
+                if (r.ip    == null && fg.IP          != null) r.ip    = parseFloat(fg.IP);
+                merged++;
+              });
+              console.log('[load2026] Merged public stats for ' + merged + ' pitchers from FG');
+            }
+          } catch(e) { console.warn('[load2026] Could not merge public stats:', e.message); }
+
+          return true;
+        }
+      }
+    } catch(e) { console.warn('[load2026] Custom model data not available:', e.message); }
+
+    // Fallback: load FanGraphs Stuff+ data
+    try {
+      const resp = await fetch('data/fg-stuffplus.json');
+      if (resp.ok) {
+        const fgData = await resp.json();
+        if (fgData.length > 0) {
+          fgData.forEach(function(fg) {
+            // Extract name from HTML: <a href="...">Name</a>
+            var name = (fg.Name || fg.PlayerName || '').replace(/<[^>]*>/g, '').trim();
+            var team = (fg.Team || fg.TeamNameAbb || '').replace(/<[^>]*>/g, '').trim();
+            if (team === '- - -' || team === '---') team = '';
+
+            allRows.push({
+              pitcher: fg.xMLBAMID || fg.playerid,
+              name: name,
+              team: team,
+              season: fg.Season || 2026,
+              // CRITICAL: overall is NULL here — this is the Custom XGBoost column.
+              // FG Stuff+ goes ONLY into fgStuff for the FanGraphs comparison column.
+              // Custom model scores come from data/stuffplus-custom.json (computed by compute_stuffplus.py).
+              overall: null,
+              fb: null, brk: null, off: null,
+              totalPitches: fg.Pitches || 0, fbPitches: 0, brkPitches: 0, offPitches: 0,
+              era: fg.ERA, fip: fg.FIP, xfip: fg.xFIP, xera: fg.xERA,
+              kpct: fg['K%'] != null ? fg['K%'] * 100 : null,
+              bbpct: fg['BB%'] != null ? fg['BB%'] * 100 : null,
+              kbbpct: fg['K-BB%'] != null ? fg['K-BB%'] * 100 : null,
+              war: fg.WAR,
+              csw: fg['C+SwStr%'] != null ? fg['C+SwStr%'] * 100 : null,
+              swstr: fg['SwStr%'] != null ? fg['SwStr%'] * 100 : null,
+              ip: fg.IP,
+              fgStuff: fg.sp_stuff, fgLoc: fg.sp_location, fgPit: fg.sp_pitching,
+              apw: null, awr: null,
+              _source: "fangraphs_stuffplus"
+            });
+          });
+          console.log('[load2026] Loaded ' + fgData.length + ' FG Stuff+ rows for 2026');
+          return true;
+        }
+      }
+    } catch(e) { console.warn('[load2026] FG Stuff+ data not available:', e.message); }
+
+    return false;
+  } catch(e) {
+    console.error('[load2026] Error:', e.message);
+    return false;
+  }
+}
+
+// ── STUFF+ 2026 LIVE FETCH ───────────────────────────────────────────────────
+// Maps a FanGraphs Pitching+ (type=36) row plus a type=8 row into our Stuff+ format.
+// FG type=36 fields: "Stuff+", "Location+", "Pitching+", IP, K%, BB%, ERA, FIP, WAR
+//
+// CRITICAL: For 2026, we do NOT have custom XGBoost model scores yet.
+// FG's Stuff+ is stored in fgStuff for comparison, but the custom model 'overall'
+// grade is null. The table clearly distinguishes "Custom Model" vs "FanGraphs Model".
+function mapFGStuffRow(spRow, stdRow){
+  // FanGraphs Stuff+ field — try several possible names
+  const fgStuffVal = Math.round(
+    nf(spRow["sp_stuff"] || spRow["Stuff+"] || spRow["stuff_plus"] || spRow["StuffPlus"]) || 0
+  );
+  if(!fgStuffVal) return null; // skip rows where FG Stuff+ is missing/zero
+
+  const fgLoc = Math.round(nf(spRow["sp_location"] || spRow["Location+"] || spRow["location_plus"] || spRow["LocationPlus"]) || 100);
+  const fgPit = Math.round(nf(spRow["sp_pitching"] || spRow["Pitching+"] || spRow["pitching_plus"] || spRow["PitchingPlus"]) || 100);
+
+  // Counting / traditional stats from std row (type=8)
+  const std = stdRow || spRow;
+  const ip  = nf(std["IP"]||std["ip"]) || nf(spRow["IP"]||spRow["ip"]) || 0;
+  const era = nf(std["ERA"]||std["era"]) || nf(spRow["ERA"]||spRow["era"]);
+  const fip = nf(std["FIP"]||std["fip"]) || nf(spRow["FIP"]||spRow["fip"]);
+  const war = nf(std["WAR"]||std["war"]) || nf(spRow["WAR"]||spRow["war"]);
+  const kp  = pct(std["K%"]||std["SO%"]) || pct(spRow["K%"]||spRow["SO%"]);
+  const bbp = pct(std["BB%"]) || pct(spRow["BB%"]);
+  const kbb = (kp!=null && bbp!=null) ? Math.round((kp - bbp)*10)/10 : null;
+
+  // Total pitches from IP (rough: ~15 pitches per IP)
+  const tp = ip ? Math.round(ip * 15) : 0;
+
+  const teamRaw = (std["Team"]||std["team"]||spRow["Team"]||spRow["team"]||"");
+  const team    = (teamRaw==="- - -"||teamRaw==="---"||teamRaw==="TOT") ? "" : teamRaw;
+
+  return {
+    pitcher: nf(spRow["xMLBAMID"]||spRow["MLBAMID"]||std["xMLBAMID"]||std["MLBAMID"]) || null,
+    name:    stripHTML(spRow["Name"]||spRow["PlayerName"]||std["Name"]||""),
+    team,
+    season:  2026,
+    // Custom model: no scores for 2026 yet (model hasn't been run on new season data)
+    overall: null, fb: null, brk: null, off: null,
+    apw: null, awr: null,
+    totalPitches: tp,
+    fbPitches:    Math.round(tp * 0.45),
+    brkPitches:   Math.round(tp * 0.30),
+    offPitches:   Math.round(tp * 0.25),
+    era:  era, fip:  fip, xfip: null, xera: null,
+    kpct: kp!=null ? kp/100 : null,
+    bbpct: bbp!=null ? bbp/100 : null,
+    kbbpct: kbb!=null ? kbb/100 : null,
+    war: war,
+    csw:  null, swstr: null,
+    ip:   ip,
+    fgStuff: fgStuffVal,  // FanGraphs Stuff+ (their model, not ours)
+    fgLoc:   fgLoc,
+    fgPit:   fgPit,
+    _source: "fg_live",
+  };
+}
+
+// Async: load 2026 Stuff+ LIVE from FanGraphs via CORS proxy chain.
+// Uses the same proxyFetch() + fetchFGStuffPlus() + fetchFG() functions
+// defined in explorer.js (loaded before leaderboard.js).
+async function load2026StuffPlusLive(){
+  var statusEl = document.getElementById('loading');
+  var origHtml = statusEl ? statusEl.innerHTML : '';
+  try {
+    if(statusEl) statusEl.innerHTML = '<div style="padding:12px;font-family:var(--fh);font-size:11px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Loading 2026 Stuff+ data…</div>';
+
+    // ── Fetch live from FanGraphs via CORS proxy chain ──
+    var sp = [], std = [];
+
+    console.log("[stuff+2026] Fetching FG Stuff+ (type=36) via CORS proxy...");
+    try { sp = await fetchFGStuffPlus(2026); }
+    catch(e){ console.error("[stuff+2026] FG Stuff+ fetch error:", e.message); }
+
+    console.log("[stuff+2026] Fetching FG pitching (type=8) via CORS proxy...");
+    try { std = await fetchFG(2026, "pit", 1, {}); }
+    catch(e){ console.error("[stuff+2026] FG pitching fetch error:", e.message); }
+
+    console.log("[stuff+2026] Results: Stuff+ rows=" + sp.length + ", Standard rows=" + std.length);
+    if(sp.length > 0) console.log("[stuff+2026] Sample Stuff+ row fields:", Object.keys(sp[0]).slice(0,15).join(", "));
+
+    // If type=36 (Stuff+) returns 0 rows but type=8 (standard) has data,
+    // create preliminary entries using standard pitching stats.
+    if(!sp.length && std.length > 0){
+      console.warn("[stuff+2026] Stuff+ (type=36) returned 0 rows — using standard stats as preliminary entries");
+      allRows = allRows.filter(function(r){ return r.season !== 2026; });
+      var added = 0;
+      std.forEach(function(r){
+        var ip = nf(r["IP"]||r["ip"]) || 0;
+        if(ip < 0.1) return;
+        var name = stripHTML(r["Name"]||r["PlayerName"]||"");
+        if(!name) return;
+        var teamRaw = r["Team"]||r["team"]||"";
+        var team = (teamRaw==="- - -"||teamRaw==="---"||teamRaw==="TOT") ? "" : teamRaw;
+        var tp = ip ? Math.round(ip * 15) : 0;
+        allRows.push({
+          pitcher: nf(r["xMLBAMID"]||r["MLBAMID"]) || null,
+          name: name, team: team, season: 2026,
+          overall: null, fb: null, brk: null, off: null, apw: null, awr: null,
+          totalPitches: tp, fbPitches: Math.round(tp*0.45), brkPitches: Math.round(tp*0.30), offPitches: Math.round(tp*0.25),
+          era: nf(r["ERA"]||r["era"]), fip: nf(r["FIP"]||r["fip"]),
+          xfip: nf(r["xFIP"]||r["xfip"]), xera: null,
+          kpct: pct(r["K%"]||r["SO%"]) != null ? pct(r["K%"]||r["SO%"])/100 : null,
+          bbpct: pct(r["BB%"]) != null ? pct(r["BB%"])/100 : null,
+          kbbpct: null, war: nf(r["WAR"]||r["war"]),
+          csw: null, swstr: null, ip: ip,
+          fgStuff: null, fgLoc: null, fgPit: null,
+          _source: "fg_std_only",
+        });
+        added++;
+      });
+      console.log("[stuff+2026] Injected "+added+" preliminary 2026 rows (standard stats only)");
+      if(added > 0){
+        buildSeasonTabs();
+        activeSeason = 2026;
+        document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
+          b.classList.toggle('active', parseInt(b.textContent)===2026);
+        });
+        document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
+          if(parseInt(b.textContent)===2026 && !b.querySelector('.live-dot')){
+            var dot = document.createElement('span');
+            dot.className = 'live-dot';
+            dot.style.cssText = 'display:inline-block;width:6px;height:6px;background:#f5a623;border-radius:50%;margin-left:5px;vertical-align:middle;animation:blink 1.5s infinite';
+            dot.title = 'Preliminary data — Stuff+ grades not yet available';
+            b.appendChild(dot);
+          }
+        });
+        renderTable();
+      }
+      if(statusEl && statusEl.innerHTML.includes('live Stuff')) statusEl.innerHTML = origHtml;
+      return;
+    }
+
+    if(!sp.length){
+      console.warn("[stuff+2026] FG returned 0 rows for both type=36 and type=8 — 2026 tab unavailable");
+      if(statusEl) statusEl.innerHTML = origHtml;
+      return;
+    }
+
+    // Build name-keyed lookup for std rows
+    const stdIdx = {};
+    std.forEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
+
+    // Remove any pre-existing 2026 rows
+    allRows = allRows.filter(function(r){ return r.season !== 2026; });
+
+    // Map and add
+    var added = 0;
+    sp.forEach(function(r){
+      const k = normName(stripHTML(r["Name"]||r["PlayerName"]||""));
+      const mapped = mapFGStuffRow(r, stdIdx[k]||null);
+      if(mapped && mapped.name){
+        allRows.push(mapped);
+        added++;
+      }
+    });
+
+    console.log("[stuff+2026] Injected "+added+" live 2026 rows into Stuff+ leaderboard");
+
+    if(added > 0){
+      buildSeasonTabs();
+      activeSeason = 2026;
+      var openDay2026 = new Date("2026-03-26");
+      var daysIn2026 = Math.max(0, Math.floor((new Date() - openDay2026) / 86400000));
+      var minPitchVal = daysIn2026 < 7 ? 0 : daysIn2026 < 30 ? 100 : daysIn2026 < 60 ? 200 : 400;
+      document.getElementById('min-pitches').value = minPitchVal;
+      document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
+        b.classList.toggle('active', parseInt(b.textContent)===2026);
+      });
+      document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b){
+        if(parseInt(b.textContent)===2026 && !b.querySelector('.live-dot')){
+          var dot = document.createElement('span');
+          dot.className = 'live-dot';
+          dot.style.cssText = 'display:inline-block;width:6px;height:6px;background:#047857;border-radius:50%;margin-left:5px;vertical-align:middle;animation:blink 1.5s infinite';
+          b.appendChild(dot);
+        }
+      });
+      renderTable();
+    }
+    if(statusEl && statusEl.innerHTML.includes('live Stuff')) statusEl.innerHTML = origHtml;
+
+  } catch(e){
+    console.error("[stuff+2026] Live fetch failed:", e.message);
+    if(statusEl && statusEl.innerHTML.includes('live Stuff')) statusEl.innerHTML = origHtml;
+  }
+}
+
+(function init() {
+  var ok = loadData();
+  if (!ok) {
+    document.getElementById('loading').innerHTML = '<div class="error-msg">Could not load Stuff+ data. RAW_DATA is missing or corrupted.</div>';
+    return;
+  }
+  buildSeasonTabs();
+  renderTable();
+  document.getElementById('search').addEventListener('input', renderTable);
+  document.getElementById('min-pitches').addEventListener('change', renderTable);
+  document.getElementById('view-mode').addEventListener('change', renderTable);
+
+  // Async-load 2026 Stuff+ data: try static files first, then live fetch
+  (async function() {
+    var loaded = await load2026StuffPlus();
+    if (loaded) {
+      // Static files found and loaded — rebuild tabs and re-render
+      buildSeasonTabs();
+      activeSeason = 2026;
+      document.querySelectorAll('#sp-season-tabs .stab').forEach(function(b) {
+        b.classList.toggle('active', parseInt(b.textContent) === 2026);
+      });
+      renderTable();
+    } else {
+      // Static files not available — try live fetch as fallback
+      setTimeout(load2026StuffPlusLive, 800);
+    }
+  })();
+})();
+
