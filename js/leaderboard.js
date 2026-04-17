@@ -332,6 +332,8 @@ async function load2026StuffPlus() {
         // data should be in RAW_DATA format: [{p:..., n:..., s:2026, ov:..., ...}]
         const rows2026 = data.filter(r => r.s === 2026);
         if (rows2026.length > 0) {
+          // Remove any 2026 rows already loaded from RAW_DATA to avoid duplicates
+          allRows = allRows.filter(function(r) { return r.season !== 2026; });
           // Merge into allRows, converting to the format loadData() produces
           rows2026.forEach(function(r) {
             allRows.push({
@@ -390,6 +392,8 @@ async function load2026StuffPlus() {
       if (resp.ok) {
         const fgData = await resp.json();
         if (fgData.length > 0) {
+          // Remove any 2026 rows already loaded from RAW_DATA to avoid duplicates
+          allRows = allRows.filter(function(r) { return r.season !== 2026; });
           fgData.forEach(function(fg) {
             // Extract name from HTML: <a href="...">Name</a>
             var name = (fg.Name || fg.PlayerName || '').replace(/<[^>]*>/g, '').trim();
@@ -575,7 +579,7 @@ async function load2026StuffPlusLive(){
 
     // Build name-keyed lookup for std rows
     const stdIdx = {};
-    std.forEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
+    stdforEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
 
     // Remove any pre-existing 2026 rows
     allRows = allRows.filter(function(r){ return r.season !== 2026; });
