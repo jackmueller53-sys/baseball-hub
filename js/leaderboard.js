@@ -579,7 +579,7 @@ async function load2026StuffPlusLive(){
 
     // Build name-keyed lookup for std rows
     const stdIdx = {};
-    stdforEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
+    std.forEach(function(r){ const k = normName(stripHTML(r["Name"]||r["PlayerName"]||"")); if(k) stdIdx[k]=r; });
 
     // Remove any pre-existing 2026 rows
     allRows = allRows.filter(function(r){ return r.season !== 2026; });
