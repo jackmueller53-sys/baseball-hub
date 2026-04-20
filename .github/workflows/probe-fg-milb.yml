@@ -3,9 +3,18 @@ name: Probe FanGraphs MiLB API (diagnostic)
 # Diagnostic-only workflow. Runs the probe script, dumps findings to logs,
 # never writes or commits anything. Delete this workflow file after we figure
 # out the correct FG URL shape and patch the real fetcher.
+#
+# Triggers:
+#   workflow_dispatch — manual UI trigger (only appears if workflow is on main)
+#   push              — auto-fires on every push to the diagnostic branch,
+#                       which is how we actually run this (workflow lives only
+#                       on the feature branch)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - milb-fg-diagnose
 
 permissions:
   contents: read
