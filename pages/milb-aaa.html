@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseball Hub &mdash; AAA Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/milb.css">
+</head>
+<body>
+
+<!-- ═══ TOOLTIP (shared, floats over everything) ═══════════════════════════ -->
+<div id="dot-tip">
+  <div class="dt-head">
+    <div class="dt-name" id="dt-name"></div>
+    <div class="dt-meta"><span class="dt-team" id="dt-team"></span><span id="dt-pos"></span></div>
+  </div>
+  <div class="dt-stats" id="dt-stats"></div>
+  <div class="dt-ax" id="dt-ax"></div>
+</div>
+
+<div class="page">
+
+<!-- ═══ HUB HEADER ═════════════════════════════════════════════════════════ -->
+<div id="hub-header">
+  <div class="hub-hdr">
+    <a class="hub-logo" href="../index.html">
+      <div class="hub-logo-mark">&#9918;</div>
+      <div>
+        <span class="hub-logo-title">Baseball Hub</span>
+        <span class="hub-logo-sub">by Jack Mueller</span>
+      </div>
+    </a>
+    <div class="hub-divider"></div>
+    <nav class="hub-nav">
+      <a class="hub-tab" href="../index.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128202;</span> Stats Explorer
+      </a>
+      <a class="hub-tab" href="../index.html#stuffplus" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128300;</span> Stuff+ Leaderboard
+      </a>
+      <a class="hub-tab active" href="milb.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#9918;</span> MiLB
+      </a>
+    </nav>
+
+    <!-- Sub-controls -->
+    <div id="sub-explorer-controls" style="display:flex;align-items:center;gap:12px;flex:1;overflow:hidden">
+      <div class="hub-divider"></div>
+      <div class="player-tabs" style="flex-shrink:0">
+        <button class="ptab active" id="ptab-hit">&#127947; Hitters</button>
+        <button class="ptab" id="ptab-pit">&#9918; Pitchers</button>
+      </div>
+      <div class="src-pills" style="flex-shrink:0">
+        <span class="src-pill pill-fg"><span class="pill-dot"></span>FanGraphs</span>
+        <span class="src-pill pill-sv"><span class="pill-dot"></span>Savant</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span class="s-badge badge-final" id="s-badge">AAA &middot; 2026 LIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SOURCE INFO BAR ═══════════════════════════════════════════════════ -->
+<div class="src-bar" id="explorer-src-bar">
+  <div class="src-bar-inner">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-fg">FanGraphs</span>
+      <span class="src-list">wRC+, wOBA, AVG, OBP, SLG, ISO, HR, SB, K%, BB%, BABIP, ERA, FIP, xFIP, WHIP, K/9, BB/9, K-BB%</span>
+    </div>
+    <div class="src-div"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-sv">Baseball Savant</span>
+      <span class="src-list">xwOBA, xBA, xSLG, xERA, Barrel%, Avg EV, HardHit%</span>
+    </div>
+    <span id="meta-txt">Loading&hellip;</span>
+  </div>
+</div>
+
+<section id="app-explorer" class="app-section app-visible">
+  <div class="app-explorer-inner">
+
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-lbl">X Axis</div>
+        <div class="sel-wrap"><select id="x-sel" onchange="MiLBExplorer.render()"></select></div>
+        <div class="ax-meta"><span id="x-src-tag"></span><span class="ax-desc" id="x-desc"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Y Axis</div>
+        <div class="sel-wrap"><select id="y-sel" onchange="MiLBExplorer.render()"></select></div>
+        <div class="ax-meta"><span id="y-src-tag"></span><span class="ax-desc" id="y-desc"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Filters</div>
+        <div class="filter-row">
+          <label class="filter-lbl">Search</label>
+          <div class="srch-wrap"><input type="text" id="srch" placeholder="Name or team&hellip;" oninput="MiLBExplorer.render()"></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Team</label>
+          <div class="sel-wrap"><select id="tm-sel" onchange="MiLBExplorer.render()"><option>All Teams</option></select></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Age <span id="age-disp" style="color:var(--fg2)">18&ndash;45</span></label>
+          <div class="age-pair">
+            <input type="number" id="age-mn" value="18" min="17" max="45" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+            <input type="number" id="age-mx" value="45" min="17" max="45" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+          </div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl" id="min-lbl">Min AB</label>
+          <input type="number" id="min-v" value="30" min="0" max="700" step="5" onchange="MiLBExplorer.render()">
+        </div>
+        <div class="filter-row" id="role-row" style="display:none">
+          <label class="filter-lbl">Role</label>
+          <div class="sel-wrap">
+            <select id="role-sel" onchange="MiLBExplorer.render()">
+              <option value="all">All</option>
+              <option value="SP">Starters</option>
+              <option value="RP">Relievers</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="count-card">
+          <div class="count-num" id="p-cnt">0</div>
+          <div class="count-lbl">Players Shown</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Display</div>
+        <div class="toggle-row" onclick="MiLBExplorer.togNames()"><span class="toggle-lbl">Player Names</span><div class="tog" id="tog-n"></div></div>
+        <div class="toggle-row" onclick="MiLBExplorer.togQuads()" style="margin-top:4px"><span class="toggle-lbl">Quadrant Labels</span><div class="tog on" id="tog-q"></div></div>
+      </div>
+      <div class="card"><div class="card-lbl">Key</div><div id="legend"></div></div>
+      <div class="card">
+        <div class="card-lbl">Status</div>
+        <div class="milb-status" id="milb-status">Loading&hellip;</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title" id="c-title">&hellip;</div>
+            <div class="chart-sub" id="c-sub"></div>
+          </div>
+          <div class="chart-src-row" id="c-src-row"></div>
+        </div>
+        <div class="chart-body"><svg class="scatter" id="svg-plot" viewBox="0 0 900 470"></svg></div>
+        <div class="chart-footer">
+          <div class="toggle-row" onclick="MiLBExplorer.togNames()" style="cursor:pointer;gap:7px">
+            <div class="tog" id="tog-n2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Names</span>
+          </div>
+          <div class="toggle-row" onclick="MiLBExplorer.togQuads()" style="cursor:pointer;gap:7px">
+            <div class="tog on" id="tog-q2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Quadrants</span>
+          </div>
+          <div class="cf-hint">Hover dots for stats &nbsp;&middot;&nbsp; Click column headers to sort</div>
+        </div>
+      </div>
+
+      <div class="tbl-card">
+        <div class="tbl-head">
+          <div class="tbl-title">AAA Leaderboard <span id="tbl-mode" style="color:var(--fg2);font-weight:400">&mdash; Hitters</span></div>
+          <div class="tbl-note" id="tbl-note">Sorted by Y-axis &darr;</div>
+        </div>
+        <div class="tbl-wrap"><table><thead id="t-head"></thead><tbody id="t-body"></tbody></table></div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="explorer-footer">
+    <div class="footer-grid">
+      <div>
+        <div class="ft">Data Sources</div>
+        <div class="fi"><span class="fb fb-fg">FanGraphs</span>
+          <div class="fn">AAA hitter + pitcher leaderboards &mdash; daily refresh<br>
+            <a href="https://www.fangraphs.com/leaders/minor-league" target="_blank">fangraphs.com/leaders/minor-league</a></div></div>
+        <div class="fi"><span class="fb fb-sv">Savant</span>
+          <div class="fn">AAA expected stats &mdash; daily refresh<br>
+            <a href="https://baseballsavant.mlb.com/leaderboard/expected_statistics?level=aaa" target="_blank">baseballsavant.mlb.com/leaderboard/expected_statistics?level=aaa</a></div></div>
+      </div>
+      <div>
+        <div class="ft">Methodology</div>
+        <div class="fn">
+          <b>Scope:</b> AAA hitters &amp; pitchers, full-season 2026<br>
+          <b>Merge:</b> FG + Savant joined by normalized player name<br>
+          <b>Origin (0,0):</b> Filtered group average &mdash; quadrant colour = perf vs peers<br>
+          <b>Role:</b> SP if GS/G &ge; 50%, else RP<br>
+          <b>Refresh:</b> GitHub Actions cron, daily at 08:30 UTC
+        </div>
+      </div>
+      <div>
+        <div class="ft">Disclaimer</div>
+        <div class="fn">All statistics &copy; <a href="https://www.fangraphs.com" target="_blank">FanGraphs LLC</a>
+          and <a href="https://www.mlb.com" target="_blank">MLB Advanced Media, L.P.</a><br>
+          For personal and educational use only.
+        </div>
+      </div>
+    </div>
+  </footer>
+</section>
+
+</div>
+
+<script>
+  window.MILB_LEVEL        = 'aaa';
+  window.MILB_HAS_STATCAST = true;
+  window.MILB_LEVEL_LABEL  = 'AAA';
+</script>
+<script src="../js/milb-data.js"></script>
+<script src="../js/milb-explorer.js"></script>
+</body>
+</html>
