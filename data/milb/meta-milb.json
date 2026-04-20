@@ -1,0 +1,35 @@
+{
+  "fetchedAt": "2026-04-20T15:13:46.333Z",
+  "season": 2026,
+  "daysInSeason": 23,
+  "thresholds": {
+    "fgQualBat": 10,
+    "fgQualPit": 0,
+    "svMin": 1,
+    "daysIn": 23
+  },
+  "enabled": true,
+  "counts": {
+    "aaa.fg-bat.json": 0,
+    "aaa.fg-pit.json": 0,
+    "aaa.fg-disc-bat.json": 0,
+    "aaa.fg-disc-pit.json": 0,
+    "aaa.sv-bat.json": 438,
+    "aaa.sv-pit.json": 499,
+    "aaa.sv-sprint.json": 153
+  },
+  "totalRows": 1090,
+  "priorFilesCount": 3,
+  "errors": [],
+  "sources": {
+    "fangraphs": "https://www.fangraphs.com/api/leaders/minor-league/data",
+    "savantXStats": "https://baseballsavant.mlb.com/leaderboard/expected_statistics",
+    "savantSprint": "https://baseballsavant.mlb.com/running_splits"
+  },
+  "coverage": {
+    "aaa": {
+      "fangraphs": true,
+      "statcast": true
+    }
+  }
+}
