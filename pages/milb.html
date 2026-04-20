@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseball Hub &mdash; MiLB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/milb.css">
+<style>
+  /* Inline styles for the AAA-only rollout. These override the disabled-card
+     appearance for AA / A+ / FSL so it's clear those levels are coming soon.
+     Remove these rules when enabling the other levels in a later PR. */
+  .milb-card.milb-card-coming {
+    opacity: 0.55;
+    pointer-events: none;
+    cursor: default;
+    filter: grayscale(0.35);
+    position: relative;
+  }
+  .milb-card.milb-card-coming::after {
+    content: "Coming soon";
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    font-family: "Barlow Condensed", sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a8a8a;
+    background: rgba(255,255,255,0.85);
+    border: 1px solid #c9c9c9;
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+
+<!-- Minimal header (matches the look of index.html hub header) -->
+<div id="hub-header">
+  <div class="hub-hdr">
+    <a class="hub-logo" href="../index.html">
+      <div class="hub-logo-mark">&#9918;</div>
+      <div>
+        <span class="hub-logo-title">Baseball Hub</span>
+        <span class="hub-logo-sub">by Jack Mueller</span>
+      </div>
+    </a>
+    <div class="hub-divider"></div>
+    <nav class="hub-nav">
+      <a class="hub-tab" href="../index.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128202;</span> Stats Explorer
+      </a>
+      <a class="hub-tab" href="../index.html#stuffplus" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128300;</span> Stuff+ Leaderboard
+      </a>
+      <a class="hub-tab active" href="milb.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#9918;</span> MiLB
+      </a>
+    </nav>
+  </div>
+</div>
+
+<div class="milb-wrap">
+  <div class="milb-landing-head">
+    <h1>Minor League Baseball</h1>
+    <div class="sub">Select a level &middot; Data refreshes daily</div>
+  </div>
+
+  <div class="milb-cards" id="milb-cards">
+    <!-- AAA: live in this rollout -->
+    <a class="milb-card" href="milb-aaa.html">
+      <div class="milb-card-level">AAA</div>
+      <div class="milb-card-leagues">International &middot; Pacific Coast</div>
+      <div class="milb-card-badges">
+        <span class="milb-badge milb-badge-fg">FanGraphs</span>
+        <span class="milb-badge milb-badge-sv">Statcast</span>
+      </div>
+      <div class="milb-card-updated" data-level="aaa">Loading&hellip;</div>
+    </a>
+
+    <!-- AA / A+ / FSL: placeholder cards for the AAA-only rollout. These are
+         visually disabled and non-clickable. They'll be re-enabled as each
+         level is added in a follow-up PR. -->
+    <div class="milb-card milb-card-coming" aria-disabled="true">
+      <div class="milb-card-level">AA</div>
+      <div class="milb-card-leagues">Eastern &middot; Southern &middot; Texas</div>
+      <div class="milb-card-badges">
+        <span class="milb-badge milb-badge-fg">FanGraphs</span>
+      </div>
+      <div class="milb-card-updated">Launching next</div>
+    </div>
+    <div class="milb-card milb-card-coming" aria-disabled="true">
+      <div class="milb-card-level">A+</div>
+      <div class="milb-card-leagues">California &middot; Carolina &middot; South Atlantic</div>
+      <div class="milb-card-badges">
+        <span class="milb-badge milb-badge-fg">FanGraphs</span>
+      </div>
+      <div class="milb-card-updated">Launching next</div>
+    </div>
+    <div class="milb-card milb-card-coming" aria-disabled="true">
+      <div class="milb-card-level">FSL</div>
+      <div class="milb-card-leagues">Florida State League (Low-A)</div>
+      <div class="milb-card-badges">
+        <span class="milb-badge milb-badge-fg">FanGraphs</span>
+        <span class="milb-badge milb-badge-sv">Statcast</span>
+      </div>
+      <div class="milb-card-updated">Launching next</div>
+    </div>
+  </div>
+
+  <div class="milb-footer">
+    Data &mdash; <a href="https://www.fangraphs.com" target="_blank">FanGraphs Minor League Leaders</a>
+    &middot; <a href="https://baseballsavant.mlb.com" target="_blank">Baseball Savant MiLB Statcast</a>
+    &middot; Refreshed daily via GitHub Actions
+  </div>
+</div>
+
+<script src="../js/milb-data.js"></script>
+<script>
+// Populate the AAA card's "last updated" badge. In the AAA-only rollout,
+// only AAA has live data, so we skip the other levels' cards (they're
+// static "Launching next" placeholders and are not clickable).
+(function () {
+  window.MiLBData.loadMeta().then(function (meta) {
+    if (!meta || !meta.counts) return;
+    document.querySelectorAll('.milb-card-updated[data-level]').forEach(function (el) {
+      var lvl = el.getAttribute('data-level');
+      var total = 0;
+      Object.keys(meta.counts).forEach(function (k) {
+        if (k.indexOf(lvl + '.') === 0) total += (meta.counts[k] || 0);
+      });
+      if (meta.fetchedAt) {
+        var d = new Date(meta.fetchedAt);
+        el.innerHTML = total.toLocaleString() + ' rows &middot; updated ' + d.toLocaleDateString();
+      } else {
+        el.textContent = 'Pending first fetch';
+      }
+    });
+  }).catch(function () {
+    document.querySelectorAll('.milb-card-updated[data-level]').forEach(function (el) {
+      el.textContent = 'Data freshness unknown';
+    });
+  });
+})();
+</script>
+</body>
+</html>

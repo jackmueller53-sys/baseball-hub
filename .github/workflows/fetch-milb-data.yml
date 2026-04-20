@@ -1,0 +1,57 @@
+name: Fetch MiLB 2026 Data
+
+# Runs daily 30 minutes after the MLB job so the two pipelines never step on
+# each other's commits. Totally independent from fetch-data.yml — if this
+# workflow fails or is disabled, the MLB pipeline is unaffected.
+
+on:
+  schedule:
+    # 8:30 AM UTC = 4:30 AM ET — after west coast MiLB games finish and
+    # 30 min after the MLB fetch-data.yml cron at 8:00 UTC.
+    - cron: '30 8 * * *'
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+permissions:
+  contents: write # Needed to commit data files back to repo
+
+jobs:
+  fetch-milb:
+    runs-on: ubuntu-latest
+    # Don't fail the overall workflow on partial data issues — the fetcher
+    # handles those gracefully and preserves prior JSON.
+    continue-on-error: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch 2026 MiLB data (FanGraphs + Savant)
+        run: node scripts/fetch-milb-2026.js
+
+      - name: Check for data changes
+        id: check
+        run: |
+          git add data/milb/
+          if git diff --cached --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No MiLB data changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "MiLB data files updated:"
+            git diff --cached --stat
+          fi
+
+      - name: Commit and push updated MiLB data
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "Auto-update MiLB 2026 data — $(date -u '+%Y-%m-%d %H:%M UTC')
+
+          Fetched from FanGraphs Minor League Leaders API + Baseball Savant MiLB
+          Statcast leaderboards. Triggered by: ${{ github.event_name }}"
+          git push
