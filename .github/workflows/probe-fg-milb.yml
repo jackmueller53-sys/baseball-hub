@@ -1,0 +1,26 @@
+name: Probe FanGraphs MiLB API (diagnostic)
+
+# Diagnostic-only workflow. Runs the probe script, dumps findings to logs,
+# never writes or commits anything. Delete this workflow file after we figure
+# out the correct FG URL shape and patch the real fetcher.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run FG MiLB probe
+        run: node scripts/probe-fg-milb.js
