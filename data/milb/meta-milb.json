@@ -8,7 +8,7 @@
     "svMin": 1,
     "daysIn": 24
   },
-  "enabled": true,
+  "enabled": false,
   "counts": {
     "aaa.fg-bat.json": 0,
     "aaa.fg-pit.json": 0,
