@@ -1,12 +1,12 @@
 {
-  "fetchedAt": "2026-04-20T15:13:46.333Z",
+  "fetchedAt": "2026-04-21T09:57:54.446Z",
   "season": 2026,
-  "daysInSeason": 23,
+  "daysInSeason": 24,
   "thresholds": {
     "fgQualBat": 10,
     "fgQualPit": 0,
     "svMin": 1,
-    "daysIn": 23
+    "daysIn": 24
   },
   "enabled": true,
   "counts": {
@@ -15,10 +15,10 @@
     "aaa.fg-disc-bat.json": 0,
     "aaa.fg-disc-pit.json": 0,
     "aaa.sv-bat.json": 438,
-    "aaa.sv-pit.json": 499,
-    "aaa.sv-sprint.json": 153
+    "aaa.sv-pit.json": 502,
+    "aaa.sv-sprint.json": 160
   },
-  "totalRows": 1090,
+  "totalRows": 1100,
   "priorFilesCount": 3,
   "errors": [],
   "sources": {
