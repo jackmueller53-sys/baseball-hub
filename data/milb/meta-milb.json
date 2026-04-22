@@ -1,35 +1,48 @@
 {
-  "fetchedAt": "2026-04-22T09:58:33.173Z",
+  "fetchedAt": "2026-04-22T22:22:37.044Z",
   "season": 2026,
-  "daysInSeason": 25,
-  "thresholds": {
-    "fgQualBat": 10,
-    "fgQualPit": 0,
-    "svMin": 1,
-    "daysIn": 25
-  },
   "enabled": true,
+  "source": "statsapi.mlb.com",
+  "endpoint": "/api/v1/stats (stats=season + stats=seasonAdvanced)",
+  "levels": [
+    "aaa",
+    "fsl"
+  ],
   "counts": {
-    "aaa.fg-bat.json": 0,
-    "aaa.fg-pit.json": 0,
-    "aaa.fg-disc-bat.json": 0,
-    "aaa.fg-disc-pit.json": 0,
-    "aaa.sv-bat.json": 438,
-    "aaa.sv-pit.json": 502,
-    "aaa.sv-sprint.json": 160
+    "aaa.sa-bat.json": 230,
+    "aaa.sa-pit.json": 51,
+    "fsl.sa-bat.json": 74,
+    "fsl.sa-pit.json": 13
   },
-  "totalRows": 1100,
-  "priorFilesCount": 3,
+  "totalRows": 368,
   "errors": [],
-  "sources": {
-    "fangraphs": "https://www.fangraphs.com/api/leaders/minor-league/data",
-    "savantXStats": "https://baseballsavant.mlb.com/leaderboard/expected_statistics",
-    "savantSprint": "https://baseballsavant.mlb.com/running_splits"
-  },
+  "prunedLegacy": [
+    "aaa/sv-bat.json",
+    "aaa/sv-pit.json",
+    "aaa/sv-sprint.json"
+  ],
   "coverage": {
     "aaa": {
-      "fangraphs": true,
-      "statcast": true
+      "statsAPI": true,
+      "statcast": false,
+      "sportId": 11,
+      "leagueId": null
+    },
+    "fsl": {
+      "statsAPI": true,
+      "statcast": false,
+      "sportId": 14,
+      "leagueId": 123
     }
-  }
+  },
+  "derivedStats": {
+    "woba": "Computed per player using 2024 FG linear weights (uBB=0.69, HBP=0.72, 1B=0.88, 2B=1.24, 3B=1.57, HR=2.00)",
+    "fip": "Computed per player, pool-specific constant solved so league-avg FIP == league-avg ERA",
+    "whiff_pct": "swingAndMisses / totalSwings (from seasonAdvanced)",
+    "contact_pct": "1 - Whiff%"
+  },
+  "notes": [
+    "Savant expected_statistics (xwOBA/xBA/xSLG/Barrel%/EV/HardHit%) is NOT included — that endpoint silently returns MLB data for all MiLB filter shapes. Dedicated Savant MiLB endpoints may work but were not probed in this pass.",
+    "FanGraphs MiLB API returned {Message:...} errors across all 4 path variants probed on 2026-04-20; not used."
+  ]
 }
