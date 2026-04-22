@@ -1,272 +1,119 @@
 /* ═════════════════════════════════════════════════════════════════════════════
    BASEBALL HUB — MiLB STATS EXPLORER (per-level)
    ─────────────────────────────────────────────────────────────────────────────
-   Mirrors the logic of the MLB explorer (js/explorer.js) — sidebar filters,
-   SVG scatter with performance-adjusted quadrants, and a sortable leaderboard
-   table — but sourced from MiLB JSON staged at ../data/milb/<level>/ .
+   Single-source rebuild: reads per-player rows from
+     ../data/milb/<level>/sa-bat.json   (hitters)
+     ../data/milb/<level>/sa-pit.json   (pitchers)
+   written by scripts/fetch-milb-statsapi.js. No FanGraphs merge, no Savant
+   merge. Each row is already fully hydrated with traditional + advanced +
+   computed derived stats (wOBA, FIP, Whiff%, Contact%).
 
    Page-level globals set by the per-level HTML before this file loads:
-     window.MILB_LEVEL        = 'aaa' | 'aa' | 'aplus' | 'fsl'
-     window.MILB_HAS_STATCAST = true  | false
-     window.MILB_LEVEL_LABEL  = 'AAA' | 'AA' | 'A+' | 'FSL'  (optional display)
+     window.MILB_LEVEL        = 'aaa' | 'fsl'
+     window.MILB_LEVEL_LABEL  = 'AAA' | 'FSL'
 
-   Required DOM IDs (mirrors MLB explorer): x-sel, y-sel, x-desc, y-desc,
-   x-src-tag, y-src-tag, srch, tm-sel, age-mn, age-mx, age-disp, min-v, min-lbl,
-   role-sel, role-row, p-cnt, c-title, c-sub, c-src-row, svg-plot, t-head,
-   t-body, tbl-note, tbl-mode, meta-txt, tog-n, tog-n2, tog-q, tog-q2, legend,
-   dot-tip + children.
+   Required DOM IDs (same as prior version): x-sel, y-sel, x-desc, y-desc,
+   x-src-tag, y-src-tag, srch, tm-sel, age-mn, age-mx, age-disp, min-v,
+   min-lbl, role-sel, role-row, p-cnt, c-title, c-sub, c-src-row, svg-plot,
+   t-head, t-body, tbl-note, tbl-mode, meta-txt, tog-n, tog-n2, tog-q,
+   tog-q2, legend, dot-tip + children.
+
+   Sources cited in the footer of the per-level HTML:
+     MLB Stats API — https://statsapi.mlb.com/api/v1/stats
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
 'use strict';
 
 // ── PAGE CONFIG ──────────────────────────────────────────────────────────────
-var LEVEL           = window.MILB_LEVEL         || 'aaa';
-var HAS_STATCAST    = !!window.MILB_HAS_STATCAST;
-var LEVEL_LABEL     = window.MILB_LEVEL_LABEL   || LEVEL.toUpperCase();
+var LEVEL       = window.MILB_LEVEL       || 'aaa';
+var LEVEL_LABEL = window.MILB_LEVEL_LABEL || LEVEL.toUpperCase();
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 var MODE   = 'hitters';
 var NAMES  = false;
 var QUADS  = true;
-var SCOL   = null;  // sort column index (default: last column = Y vs avg desc)
+var SCOL   = null;
 var SDIR   = 1;
 var DB     = { hitters: [], pitchers: [] };
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
-var mean = function (a) { return a.length ? a.reduce(function (s, v) { return s + v; }, 0) / a.length : 0; };
-var fv   = function (v) { return v == null || isNaN(v) ? '--' : Math.abs(v) < 1 ? v.toFixed(3) : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1); };
-var nf   = function (v) { var f = parseFloat(v); return isNaN(f) ? null : f; };
-var pct  = function (v) {
-  if (v == null || v === '') return null;
-  var s = String(v).replace('%', '').trim();
-  var f = parseFloat(s);
-  if (isNaN(f)) return null;
-  return Math.abs(f) <= 1 ? f * 100 : f;
-};
-var stripHTML = function (s) { return String(s || '').replace(/<[^>]*>/g, '').trim(); };
-
-// Normalize player names: strip accents, suffixes (jr/sr/ii/iii/iv/v), lowercase, letters+spaces only.
-function normName(s) {
-  return String(s || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g, '')
-    .replace(/[^a-z\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-function savantNameToNorm(s) {
-  // Savant uses "Last, First" → flip to "First Last" before normalizing
-  var t = String(s || '');
-  if (t.indexOf(',') > -1) {
-    var parts = t.split(',');
-    t = (parts[1] || '').trim() + ' ' + (parts[0] || '').trim();
-  }
-  return normName(t);
-}
-function buildIdx(rows, keyFn) {
-  var idx = {};
-  rows.forEach(function (r) {
-    var k = keyFn(r);
-    if (!k) return;
-    var prev = idx[k];
-    if (!prev) { idx[k] = r; return; }
-    // On collision, keep the row with more non-null fields
-    var countNN = function (o) { var c = 0; for (var k2 in o) if (o[k2] != null && o[k2] !== '') c++; return c; };
-    if (countNN(r) > countNN(prev)) idx[k] = r;
-  });
-  return idx;
-}
-function fuzzyLookup(k, idx) {
-  if (!k) return null;
-  if (idx[k]) return idx[k];
-  // Last-name-only fallback (single match)
-  var last = k.split(' ').slice(-1)[0];
-  if (!last) return null;
-  var hits = Object.keys(idx).filter(function (n) { return n.split(' ').slice(-1)[0] === last; });
-  return hits.length === 1 ? idx[hits[0]] : null;
-}
+function mean(a) { return a.length ? a.reduce(function (s, v) { return s + v; }, 0) / a.length : 0; }
+function fv(v) { return v == null || isNaN(v) ? '--' : Math.abs(v) < 1 ? v.toFixed(3) : Math.abs(v) < 10 ? v.toFixed(2) : v.toFixed(1); }
+function nf(v) { var f = parseFloat(v); return isNaN(f) ? null : f; }
 
 // ── AXIS DEFS ────────────────────────────────────────────────────────────────
 // dir: 1 = higher is better; -1 = lower is better
-// src: 'fg' | 'sv'
+// src: 'sa' (MLB Stats API season) | 'adv' (seasonAdvanced) | 'calc' (computed)
 var H_AXES_ALL = [
-  { k: 'wrc_plus', lbl: 'wRC+',     src: 'fg', d: 'Weighted Runs Created+ — 100 is league average',                 dir: 1  },
-  { k: 'woba',     lbl: 'wOBA',     src: 'fg', d: 'Weighted On-Base Average — offensive value per PA',              dir: 1  },
-  { k: 'avg',      lbl: 'AVG',      src: 'fg', d: 'Batting Average',                                                 dir: 1  },
-  { k: 'obp',      lbl: 'OBP',      src: 'fg', d: 'On-Base Percentage',                                              dir: 1  },
-  { k: 'slg',      lbl: 'SLG',      src: 'fg', d: 'Slugging Percentage',                                             dir: 1  },
-  { k: 'ops',      lbl: 'OPS',      src: 'fg', d: 'OBP + SLG',                                                       dir: 1  },
-  { k: 'iso',      lbl: 'ISO',      src: 'fg', d: 'Isolated Power — SLG minus AVG',                                  dir: 1  },
-  { k: 'hr',       lbl: 'HR',       src: 'fg', d: 'Home Runs',                                                       dir: 1  },
-  { k: 'sb',       lbl: 'SB',       src: 'fg', d: 'Stolen Bases',                                                    dir: 1  },
-  { k: 'bb_pct',   lbl: 'BB%',      src: 'fg', d: 'Walks as % of PA',                                                dir: 1  },
-  { k: 'k_pct',    lbl: 'K%',       src: 'fg', d: 'Strikeouts as % of PA (lower = better)',                          dir: -1 },
-  { k: 'babip',    lbl: 'BABIP',    src: 'fg', d: 'Batting Avg on Balls in Play',                                    dir: 1  },
-  { k: 'xwoba',    lbl: 'xwOBA',    src: 'sv', d: 'Expected wOBA based on quality of contact',                       dir: 1  },
-  { k: 'xba',      lbl: 'xBA',      src: 'sv', d: 'Expected Batting Average',                                        dir: 1  },
-  { k: 'xslg',     lbl: 'xSLG',     src: 'sv', d: 'Expected Slugging',                                               dir: 1  },
-  { k: 'brl_pct',  lbl: 'Barrel%',  src: 'sv', d: 'Barrel% — elite contact events per PA',                           dir: 1  },
-  { k: 'ev',       lbl: 'Avg EV',   src: 'sv', d: 'Average Exit Velocity (mph)',                                     dir: 1  },
-  { k: 'hard_hit', lbl: 'HardHit%', src: 'sv', d: 'Hard Hit% — batted balls ≥ 95 mph',                               dir: 1  }
+  { k: 'woba',        lbl: 'wOBA',    src: 'calc', d: 'Weighted On-Base Average — computed from components using 2024 FG linear weights',      dir: 1  },
+  { k: 'avg',         lbl: 'AVG',     src: 'sa',   d: 'Batting Average',                                                                        dir: 1  },
+  { k: 'obp',         lbl: 'OBP',     src: 'sa',   d: 'On-Base Percentage',                                                                     dir: 1  },
+  { k: 'slg',         lbl: 'SLG',     src: 'sa',   d: 'Slugging Percentage',                                                                    dir: 1  },
+  { k: 'ops',         lbl: 'OPS',     src: 'sa',   d: 'OBP + SLG',                                                                              dir: 1  },
+  { k: 'iso',         lbl: 'ISO',     src: 'adv',  d: 'Isolated Power — SLG minus AVG',                                                         dir: 1  },
+  { k: 'hr',          lbl: 'HR',      src: 'sa',   d: 'Home Runs',                                                                              dir: 1  },
+  { k: 'rbi',         lbl: 'RBI',     src: 'sa',   d: 'Runs Batted In',                                                                         dir: 1  },
+  { k: 'sb',          lbl: 'SB',      src: 'sa',   d: 'Stolen Bases',                                                                           dir: 1  },
+  { k: 'bb_pct',      lbl: 'BB%',     src: 'adv',  d: 'Walks as % of PA',                                                                       dir: 1  },
+  { k: 'k_pct',       lbl: 'K%',      src: 'adv',  d: 'Strikeouts as % of PA (lower = better)',                                                 dir: -1 },
+  { k: 'bb_k',        lbl: 'BB/K',    src: 'adv',  d: 'Walks per strikeout — plate discipline indicator',                                       dir: 1  },
+  { k: 'babip',       lbl: 'BABIP',   src: 'sa',   d: 'Batting Avg on Balls in Play',                                                           dir: 1  },
+  { k: 'whiff_pct',   lbl: 'Whiff%',  src: 'adv',  d: 'Swing-and-miss rate — swingAndMisses / totalSwings (lower = better contact)',            dir: -1 },
+  { k: 'contact_pct', lbl: 'Contact%',src: 'adv',  d: 'Contact rate on swings — 1 minus Whiff%',                                                 dir: 1  },
+  { k: 'hr_pct',      lbl: 'HR%',     src: 'adv',  d: 'Home runs as % of PA',                                                                   dir: 1  }
 ];
 
 var P_AXES_ALL = [
-  { k: 'era',     lbl: 'ERA',     src: 'fg', d: 'Earned Run Average (lower = better)',                    dir: -1 },
-  { k: 'fip',     lbl: 'FIP',     src: 'fg', d: 'Fielding Independent Pitching',                          dir: -1 },
-  { k: 'xfip',    lbl: 'xFIP',    src: 'fg', d: 'Expected FIP — HR/FB regressed to league average',       dir: -1 },
-  { k: 'whip',    lbl: 'WHIP',    src: 'fg', d: 'Walks + Hits per IP',                                    dir: -1 },
-  { k: 'k9',      lbl: 'K/9',     src: 'fg', d: 'Strikeouts per 9 innings',                               dir: 1  },
-  { k: 'bb9',     lbl: 'BB/9',    src: 'fg', d: 'Walks per 9 innings (lower = better)',                   dir: -1 },
-  { k: 'k_pct',   lbl: 'K%',      src: 'fg', d: 'Strikeouts as % of batters faced',                       dir: 1  },
-  { k: 'bb_pct',  lbl: 'BB%',     src: 'fg', d: 'Walks as % of batters faced (lower = better)',           dir: -1 },
-  { k: 'kbb_pct', lbl: 'K-BB%',   src: 'fg', d: 'Strikeout rate minus walk rate',                         dir: 1  },
-  { k: 'hr9',     lbl: 'HR/9',    src: 'fg', d: 'Home Runs per 9 (lower = better)',                       dir: -1 },
-  { k: 'xera',    lbl: 'xERA',    src: 'sv', d: 'Expected ERA — contact-quality based',                    dir: -1 },
-  { k: 'xwoba_a', lbl: 'xwOBA Against', src: 'sv', d: 'Expected wOBA allowed on contact',                 dir: -1 },
-  { k: 'xba_a',   lbl: 'xBA Against',   src: 'sv', d: 'Expected BA allowed on contact',                   dir: -1 },
-  { k: 'xslg_a',  lbl: 'xSLG Against',  src: 'sv', d: 'Expected SLG allowed on contact',                  dir: -1 },
-  { k: 'brl_pct', lbl: 'Barrel% Against', src: 'sv', d: 'Barrel% allowed — lower is better',              dir: -1 },
-  { k: 'ev',      lbl: 'Avg EV Against', src: 'sv', d: 'Average exit velocity against',                   dir: -1 },
-  { k: 'hard_hit', lbl: 'HardHit% Against', src: 'sv', d: 'Hard hits allowed ≥ 95 mph',                   dir: -1 }
+  { k: 'era',      lbl: 'ERA',    src: 'sa',  d: 'Earned Run Average (lower = better)',                                       dir: -1 },
+  { k: 'fip',      lbl: 'FIP',    src: 'calc',d: 'Fielding Independent Pitching — computed; pool constant normalizes to league ERA', dir: -1 },
+  { k: 'whip',     lbl: 'WHIP',   src: 'sa',  d: 'Walks + Hits per IP (lower = better)',                                      dir: -1 },
+  { k: 'k9',       lbl: 'K/9',    src: 'adv', d: 'Strikeouts per 9 innings',                                                   dir: 1  },
+  { k: 'bb9',      lbl: 'BB/9',   src: 'adv', d: 'Walks per 9 innings (lower = better)',                                       dir: -1 },
+  { k: 'hr9',      lbl: 'HR/9',   src: 'adv', d: 'Home runs per 9 innings (lower = better)',                                   dir: -1 },
+  { k: 'k_pct',    lbl: 'K%',     src: 'adv', d: 'Strikeouts as % of batters faced',                                           dir: 1  },
+  { k: 'bb_pct',   lbl: 'BB%',    src: 'adv', d: 'Walks as % of batters faced (lower = better)',                               dir: -1 },
+  { k: 'kbb_pct',  lbl: 'K-BB%',  src: 'adv', d: 'Strikeout rate minus walk rate — command + stuff signal',                    dir: 1  },
+  { k: 'whiff_pct',lbl: 'Whiff%', src: 'adv', d: 'Swing-and-miss rate induced (swingAndMisses / totalSwings)',                 dir: 1  },
+  { k: 'avg_a',    lbl: 'AVG',    src: 'sa',  d: 'Batting average against (lower = better)',                                   dir: -1 },
+  { k: 'ops_a',    lbl: 'OPS',    src: 'sa',  d: 'OPS against (lower = better)',                                               dir: -1 },
+  { k: 'babip',    lbl: 'BABIP',  src: 'sa',  d: 'BABIP against (lower = better)',                                             dir: -1 }
 ];
 
 var H_TIP = [
-  { k: 'avg',      lbl: 'AVG',     f: function (v) { return v == null ? '--' : v.toFixed(3); } },
-  { k: 'obp',      lbl: 'OBP',     f: function (v) { return v == null ? '--' : v.toFixed(3); } },
-  { k: 'slg',      lbl: 'SLG',     f: function (v) { return v == null ? '--' : v.toFixed(3); } },
-  { k: 'hr',       lbl: 'HR',      f: function (v) { return v == null ? '--' : Math.round(v); } },
-  { k: 'wrc_plus', lbl: 'wRC+',    f: function (v) { return v == null ? '--' : Math.round(v); } },
-  { k: 'bb_pct',   lbl: 'BB%',     f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } },
-  { k: 'k_pct',    lbl: 'K%',      f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
+  { k: 'avg',     lbl: 'AVG',    f: function (v) { return v == null ? '--' : v.toFixed(3); } },
+  { k: 'obp',     lbl: 'OBP',    f: function (v) { return v == null ? '--' : v.toFixed(3); } },
+  { k: 'slg',     lbl: 'SLG',    f: function (v) { return v == null ? '--' : v.toFixed(3); } },
+  { k: 'hr',      lbl: 'HR',     f: function (v) { return v == null ? '--' : Math.round(v); } },
+  { k: 'woba',    lbl: 'wOBA',   f: function (v) { return v == null ? '--' : v.toFixed(3); } },
+  { k: 'bb_pct',  lbl: 'BB%',    f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } },
+  { k: 'k_pct',   lbl: 'K%',     f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
 ];
 var P_TIP = [
-  { k: 'era',    lbl: 'ERA',  f: function (v) { return v == null ? '--' : v.toFixed(2); } },
-  { k: 'fip',    lbl: 'FIP',  f: function (v) { return v == null ? '--' : v.toFixed(2); } },
-  { k: 'whip',   lbl: 'WHIP', f: function (v) { return v == null ? '--' : v.toFixed(2); } },
-  { k: 'k9',     lbl: 'K/9',  f: function (v) { return v == null ? '--' : v.toFixed(1); } },
-  { k: 'bb9',    lbl: 'BB/9', f: function (v) { return v == null ? '--' : v.toFixed(1); } },
-  { k: 'k_pct',  lbl: 'K%',   f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
+  { k: 'era',      lbl: 'ERA',    f: function (v) { return v == null ? '--' : v.toFixed(2); } },
+  { k: 'fip',      lbl: 'FIP',    f: function (v) { return v == null ? '--' : v.toFixed(2); } },
+  { k: 'whip',     lbl: 'WHIP',   f: function (v) { return v == null ? '--' : v.toFixed(2); } },
+  { k: 'k9',       lbl: 'K/9',    f: function (v) { return v == null ? '--' : v.toFixed(1); } },
+  { k: 'bb9',      lbl: 'BB/9',   f: function (v) { return v == null ? '--' : v.toFixed(1); } },
+  { k: 'k_pct',    lbl: 'K%',     f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
 ];
 
-function axes()    { var A = MODE === 'hitters' ? H_AXES_ALL : P_AXES_ALL; return HAS_STATCAST ? A : A.filter(function (a) { return a.src !== 'sv'; }); }
+function axes()    { return MODE === 'hitters' ? H_AXES_ALL : P_AXES_ALL; }
 function tip()     { return MODE === 'hitters' ? H_TIP : P_TIP; }
 function dat()     { return DB[MODE] || []; }
 function xk()      { return document.getElementById('x-sel').value; }
 function yk()      { return document.getElementById('y-sel').value; }
 
 function qcol(px, py) {
-  if (px >= 0 && py >= 0) return '#047857'; // elite
-  if (px < 0  && py >= 0) return '#1D4ED8'; // strong Y only
-  if (px >= 0 && py < 0)  return '#C2410C'; // strong X only
-  return '#B91C1C';                          // below avg both
+  if (px >= 0 && py >= 0) return '#047857';
+  if (px < 0  && py >= 0) return '#1D4ED8';
+  if (px >= 0 && py < 0)  return '#C2410C';
+  return '#B91C1C';
 }
+
 function srcTag(s) {
-  return s === 'fg'
-    ? '<span class="src-tag tag-fg">FanGraphs</span>'
-    : '<span class="src-tag tag-sv">Savant</span>';
-}
-
-// ── ADAPTERS (MiLB JSON → unified player row) ────────────────────────────────
-function mapHitter(fg, sv) {
-  var teamRaw = fg['Team'] || fg['team'] || '';
-  var team = (teamRaw === '- - -' || teamRaw === '---') ? (sv ? sv['team_name_abbrev'] || '' : '') : teamRaw;
-  var avg  = nf(fg['AVG'] || fg['avg']);
-  var obp  = nf(fg['OBP'] || fg['obp']);
-  var slg  = nf(fg['SLG'] || fg['slg']);
-  return {
-    name:     stripHTML(fg['PlayerName'] || fg['Name'] || ''),
-    team:     team,
-    age:      nf(fg['Age'] || fg['age']),
-    pos:      fg['pos'] || fg['Position'] || '',
-    ab:       nf(fg['AB']  || fg['ab']),
-    pa:       nf(fg['PA']  || fg['pa']),
-    avg:      avg,
-    obp:      obp,
-    slg:      slg,
-    ops:      (obp != null && slg != null) ? +(obp + slg).toFixed(3) : nf(fg['OPS']),
-    hr:       nf(fg['HR']  || fg['hr']),
-    sb:       nf(fg['SB']  || fg['sb']),
-    wrc_plus: nf(fg['wRC+'] || fg['wRCPlus'] || fg['wrc_plus']),
-    woba:     nf(fg['wOBA'] || fg['woba']),
-    iso:      nf(fg['ISO'] || fg['iso']) != null ? nf(fg['ISO'] || fg['iso']) : ((avg != null && slg != null) ? +(slg - avg).toFixed(3) : null),
-    babip:    nf(fg['BABIP'] || fg['babip']),
-    k_pct:    pct(fg['K%']  || fg['SO%']),
-    bb_pct:   pct(fg['BB%']),
-    // Savant (AAA/FSL only)
-    xwoba:    sv ? nf(sv['est_woba'] || sv['xwoba'])   : null,
-    xba:      sv ? nf(sv['est_ba']   || sv['xba'])     : null,
-    xslg:     sv ? nf(sv['est_slg']  || sv['xslg'])    : null,
-    brl_pct:  sv ? nf(sv['brl_percent'] || sv['barrel_batted_rate']) : null,
-    ev:       sv ? nf(sv['avg_best_speed'] || sv['avg_hit_speed'] || sv['exit_velocity_avg']) : null,
-    hard_hit: sv ? nf(sv['hard_hit_percent'] || sv['hard_hit']) : null
-  };
-}
-
-function mapPitcher(fg, sv) {
-  var g  = nf(fg['G']  || fg['g'])  || 1;
-  var gs = nf(fg['GS'] || fg['gs']) || 0;
-  var teamRaw = fg['Team'] || fg['team'] || '';
-  var team = (teamRaw === '- - -' || teamRaw === '---' || teamRaw === 'TOT') ? (sv ? sv['team_name_abbrev'] || '' : '') : teamRaw;
-  return {
-    name:    stripHTML(fg['PlayerName'] || fg['Name'] || fg['player_name'] || ''),
-    team:    team,
-    age:     nf(fg['Age'] || fg['age']),
-    role:    (gs / g) >= 0.5 ? 'SP' : 'RP',
-    g:       nf(fg['G']  || fg['g']),
-    gs:      nf(fg['GS'] || fg['gs']),
-    ip:      nf(fg['IP'] || fg['ip']),
-    era:     nf(fg['ERA'] || fg['era']),
-    fip:     nf(fg['FIP'] || fg['fip']),
-    xfip:    nf(fg['xFIP'] || fg['xfip']),
-    whip:    nf(fg['WHIP'] || fg['whip']),
-    k9:      nf(fg['K/9']  || fg['SO9'] || fg['k9']),
-    bb9:     nf(fg['BB/9'] || fg['bb9']),
-    hr9:     nf(fg['HR/9'] || fg['hr9']),
-    k_pct:   pct(fg['K%']  || fg['SO%']),
-    bb_pct:  pct(fg['BB%']),
-    kbb_pct: pct(fg['K-BB%'] || fg['K-BB'] || fg['kbb_pct']),
-    // Savant allowed-side (AAA/FSL only, pitcher expected stats CSV)
-    xera:    sv ? nf(sv['xera'] || sv['est_era']) : null,
-    xwoba_a: sv ? nf(sv['est_woba']) : null,
-    xba_a:   sv ? nf(sv['est_ba'])   : null,
-    xslg_a:  sv ? nf(sv['est_slg'])  : null,
-    brl_pct: sv ? nf(sv['brl_percent'] || sv['barrel_batted_rate']) : null,
-    ev:      sv ? nf(sv['avg_best_speed'] || sv['avg_hit_speed'] || sv['exit_velocity_avg']) : null,
-    hard_hit: sv ? nf(sv['hard_hit_percent'] || sv['hard_hit']) : null
-  };
-}
-
-// ── MERGE (FG + Savant) ──────────────────────────────────────────────────────
-function mergeHitters(fgRows, svRows, minAB) {
-  var svIdx = buildIdx(svRows, function (r) { return savantNameToNorm(r['last_name, first_name'] || r['player_name'] || ''); });
-  var matched = 0;
-  var out = fgRows
-    .filter(function (r) { return nf(r['AB'] || r['ab'] || r['PA'] || r['pa'] || 0) >= minAB; })
-    .map(function (r) {
-      var k  = normName(stripHTML(r['PlayerName'] || r['Name'] || ''));
-      var sv = HAS_STATCAST ? fuzzyLookup(k, svIdx) : null;
-      if (sv) matched++;
-      return mapHitter(r, sv);
-    })
-    .filter(function (r) { return r.name; });
-  console.log('[milb-merge] ' + LEVEL + ' hitters: ' + out.length + ' rows, ' + matched + '/' + fgRows.length + ' Savant-matched');
-  return out;
-}
-function mergePitchers(fgRows, svRows, minIP) {
-  var svIdx = buildIdx(svRows, function (r) { return savantNameToNorm(r['last_name, first_name'] || r['player_name'] || ''); });
-  var matched = 0;
-  var out = fgRows
-    .filter(function (r) { return nf(r['IP'] || r['ip'] || 0) >= minIP; })
-    .map(function (r) {
-      var k  = normName(stripHTML(r['PlayerName'] || r['Name'] || ''));
-      var sv = HAS_STATCAST ? fuzzyLookup(k, svIdx) : null;
-      if (sv) matched++;
-      return mapPitcher(r, sv);
-    })
-    .filter(function (r) { return r.name; });
-  console.log('[milb-merge] ' + LEVEL + ' pitchers: ' + out.length + ' rows, ' + matched + '/' + fgRows.length + ' Savant-matched');
-  return out;
+  var lbl = s === 'calc' ? 'Computed' : (s === 'adv' ? 'Advanced' : 'Stats API');
+  var cls = s === 'calc' ? 'tag-calc' : (s === 'adv' ? 'tag-adv' : 'tag-sa');
+  return '<span class="src-tag ' + cls + '">' + lbl + '</span>';
 }
 
 // ── UI BUILDERS ──────────────────────────────────────────────────────────────
@@ -275,17 +122,27 @@ function buildAxes() {
   ['x-sel', 'y-sel'].forEach(function (id, i) {
     var s = document.getElementById(id);
     s.innerHTML = ax.map(function (a) { return '<option value="' + a.k + '">' + a.lbl + '</option>'; }).join('');
-    s.selectedIndex = i === 0 ? 0 : Math.min(3, ax.length - 1);
+    // Sensible defaults: hitter X=wOBA, Y=BB% ; pitcher X=ERA, Y=K%
+    if (MODE === 'hitters') {
+      s.selectedIndex = (id === 'x-sel') ? 0 : ax.findIndex(function (a) { return a.k === 'bb_pct'; });
+    } else {
+      s.selectedIndex = (id === 'x-sel') ? 0 : ax.findIndex(function (a) { return a.k === 'k_pct'; });
+    }
+    if (s.selectedIndex < 0) s.selectedIndex = i;
   });
   updDesc();
 }
+
 function updDesc() {
-  var ax = axes(), x = ax.find(function (a) { return a.k === xk(); }), y = ax.find(function (a) { return a.k === yk(); });
+  var ax = axes();
+  var x = ax.find(function (a) { return a.k === xk(); });
+  var y = ax.find(function (a) { return a.k === yk(); });
   document.getElementById('x-src-tag').innerHTML = x ? srcTag(x.src) : '';
   document.getElementById('y-src-tag').innerHTML = y ? srcTag(y.src) : '';
   document.getElementById('x-desc').textContent  = (x || {}).d || '';
   document.getElementById('y-desc').textContent  = (y || {}).d || '';
 }
+
 function updAge() {
   document.getElementById('age-disp').textContent =
     document.getElementById('age-mn').value + '\u2013' + document.getElementById('age-mx').value;
@@ -303,10 +160,11 @@ function setMode(mode) {
   MODE = mode;
   document.getElementById('ptab-hit').classList.toggle('active', mode === 'hitters');
   document.getElementById('ptab-pit').classList.toggle('active', mode === 'pitchers');
-  document.getElementById('min-lbl').textContent = mode === 'hitters' ? 'Min AB' : 'Min IP';
+  document.getElementById('min-lbl').textContent = mode === 'hitters' ? 'Min PA' : 'Min IP';
   document.getElementById('min-v').value = mode === 'hitters' ? 30 : 10;
   document.getElementById('role-row').style.display = mode === 'pitchers' ? '' : 'none';
-  var tm = document.getElementById('tbl-mode'); if (tm) tm.textContent = '— ' + (mode === 'hitters' ? 'Hitters' : 'Pitchers');
+  var tm = document.getElementById('tbl-mode');
+  if (tm) tm.textContent = '— ' + (mode === 'hitters' ? 'Hitters' : 'Pitchers');
   SCOL = null; SDIR = 1;
   buildAxes();
   rebuildTeamDropdown();
@@ -325,7 +183,7 @@ function filt() {
   return d.filter(function (p) {
     if (tm !== 'All Teams' && p.team !== tm) return false;
     if (p.age && (p.age < amn || p.age > amx)) return false;
-    if (MODE === 'hitters'  && (p.ab || p.pa || 0) < mv) return false;
+    if (MODE === 'hitters'  && (p.pa || 0) < mv) return false;
     if (MODE === 'pitchers' && (p.ip || 0) < mv) return false;
     if (MODE === 'pitchers' && role !== 'all' && p.role !== role) return false;
     if (q && !(p.name || '').toLowerCase().includes(q) && !(p.team || '').toLowerCase().includes(q)) return false;
@@ -337,7 +195,9 @@ function filt() {
 function render() {
   updDesc();
   var f = filt(), xKey = xk(), yKey = yk();
-  var ax = axes(), xa = ax.find(function (a) { return a.k === xKey; }), ya = ax.find(function (a) { return a.k === yKey; });
+  var ax = axes();
+  var xa = ax.find(function (a) { return a.k === xKey; });
+  var ya = ax.find(function (a) { return a.k === yKey; });
   var xl = xa ? xa.lbl : xKey, yl = ya ? ya.lbl : yKey;
   document.getElementById('p-cnt').textContent = f.length;
   document.getElementById('c-title').innerHTML = xl + ' <em>vs</em> ' + yl;
@@ -349,7 +209,8 @@ function render() {
     'Origin = filtered average &nbsp;&middot;&nbsp; ' + xl + ' avg: <b>' + fv(xA) + '</b>' +
     ' &nbsp;&middot;&nbsp; ' + yl + ' avg: <b>' + fv(yA) + '</b>' +
     ' &nbsp;&middot;&nbsp; <span style="color:var(--fg2)">' + f.length + '/' + dat().length + ' players</span>';
-  var mt = document.getElementById('meta-txt'); if (mt) mt.textContent = f.length + ' of ' + dat().length + ' players';
+  var mt = document.getElementById('meta-txt');
+  if (mt) mt.textContent = f.length + ' of ' + dat().length + ' players';
   var xDir = xa ? (xa.dir || 1) : 1;
   var yDir = ya ? (ya.dir || 1) : 1;
   var cd = f.map(function (p) {
@@ -368,7 +229,7 @@ function render() {
   drawTable(cd, xl, yl);
 }
 
-// ── SCATTER ──────────────────────────────────────────────────────────────────
+// ── SCATTER (unchanged from prior version, just passed new data shape) ──────
 function drawScatter(data, xl, yl, xDir, yDir) {
   var svg = document.getElementById('svg-plot');
   var W = 900, H = 470, PAD = { t: 26, r: 22, b: 50, l: 54 };
@@ -389,7 +250,8 @@ function drawScatter(data, xl, yl, xDir, yDir) {
   var x0 = sx(0), y0 = sy(0);
   var tks = function (lo, hi, n) {
     var r = hi - lo, s = Math.pow(10, Math.floor(Math.log10(r / n)));
-    var b = s; [1, 2, 5, 10].forEach(function (m) { var c = m * s; if (Math.abs(r / c - n) < Math.abs(r / b - n)) b = c; });
+    var b = s;
+    [1, 2, 5, 10].forEach(function (m) { var c = m * s; if (Math.abs(r / c - n) < Math.abs(r / b - n)) b = c; });
     var st = Math.ceil(lo / b) * b, t = [];
     for (var v = st; v <= hi + 1e-9; v += b) t.push(parseFloat(v.toFixed(8)));
     return t;
@@ -470,7 +332,9 @@ function showTip(e, i) {
     '<div class="dt-ax-dev ' + xDevCls + '">' + (d.cx >= 0 ? '+' : '') + fv(d.cx) + ' vs avg</div></div>' +
     '<div><div class="dt-ax-lbl">' + yl + '</div><div class="dt-ax-val">' + fv(d.rawY) + '</div>' +
     '<div class="dt-ax-dev ' + yDevCls + '">' + (d.cy >= 0 ? '+' : '') + fv(d.cy) + ' vs avg</div></div>';
-  var t = document.getElementById('dot-tip'); t.style.display = 'block'; moveTip(e);
+  var t = document.getElementById('dot-tip');
+  t.style.display = 'block';
+  moveTip(e);
 }
 function moveTip(e) {
   var t = document.getElementById('dot-tip'), tw = t.offsetWidth || 220, th = t.offsetHeight || 150;
@@ -503,8 +367,8 @@ function drawLegend(xl, yl) {
 function drawTable(data, xl, yl) {
   var isH = MODE === 'hitters';
   var cols = isH
-    ? ['Player', 'Team', 'Pos', 'Age', 'AB', 'AVG / OPS / HR / SB / wRC+', xl, yl, xl + ' vs avg', yl + ' vs avg']
-    : ['Player', 'Team', 'Role', 'Age', 'IP', 'ERA / FIP / WHIP / K%',     xl, yl, xl + ' vs avg', yl + ' vs avg'];
+    ? ['Player', 'Team', 'Pos', 'Age', 'PA', 'AVG / OPS / HR / SB / wOBA', xl, yl, xl + ' vs avg', yl + ' vs avg']
+    : ['Player', 'Team', 'Role', 'Age', 'IP', 'ERA / FIP / WHIP / K%',      xl, yl, xl + ' vs avg', yl + ' vs avg'];
   var si = SCOL !== null ? SCOL : 9;
   var sorted = data.slice().sort(function (a, b) {
     var vals = [
@@ -512,7 +376,7 @@ function drawTable(data, xl, yl) {
       [a.team || '', b.team || ''],
       [isH ? (a.pos || '') : (a.role || ''), isH ? (b.pos || '') : (b.role || '')],
       [a.age || 0, b.age || 0],
-      [isH ? (a.ab || a.pa || 0) : (a.ip || 0), isH ? (b.ab || b.pa || 0) : (b.ip || 0)],
+      [isH ? (a.pa || 0) : (a.ip || 0), isH ? (b.pa || 0) : (b.ip || 0)],
       [0, 0],
       [a.rawX == null ? -9999 : a.rawX, b.rawX == null ? -9999 : b.rawX],
       [a.rawY == null ? -9999 : a.rawY, b.rawY == null ? -9999 : b.rawY],
@@ -531,7 +395,7 @@ function drawTable(data, xl, yl) {
     var sl = isH
       ? ((p.avg != null ? p.avg.toFixed(3) : '--') + '/' + (p.ops != null ? p.ops.toFixed(3) : '--')
          + '/' + (p.hr != null ? Math.round(p.hr) : '--') + '/' + (p.sb != null ? Math.round(p.sb) : '--')
-         + '/' + (p.wrc_plus != null ? Math.round(p.wrc_plus) : '--'))
+         + '/' + (p.woba != null ? p.woba.toFixed(3) : '--'))
       : ((p.era != null ? p.era.toFixed(2) : '--') + '/' + (p.fip != null ? p.fip.toFixed(2) : '--')
          + '/' + (p.whip != null ? p.whip.toFixed(2) : '--') + '/' + (p.k_pct != null ? p.k_pct.toFixed(1) + '%' : '--'));
     return '<tr>'
@@ -539,7 +403,7 @@ function drawTable(data, xl, yl) {
       + '<td><span class="td-tm">' + (p.team || '--') + '</span></td>'
       + '<td style="color:var(--fg2);font-size:10px">' + (isH ? (p.pos || '--') : (p.role || '--')) + '</td>'
       + '<td class="td-n">' + (p.age || '--') + '</td>'
-      + '<td class="td-n">' + (isH ? (p.ab || p.pa || '--') : (p.ip || '--')) + '</td>'
+      + '<td class="td-n">' + (isH ? (p.pa || '--') : (p.ip != null ? p.ip.toFixed(1) : '--')) + '</td>'
       + '<td class="td-slash">' + sl + '</td>'
       + '<td class="td-n">' + fv(p.rawX) + '</td>'
       + '<td class="td-n">' + fv(p.rawY) + '</td>'
@@ -551,7 +415,11 @@ function drawTable(data, xl, yl) {
   if (note) note.textContent = 'Sorted by ' + cols[si] + (SDIR > 0 ? ' \u2193' : ' \u2191');
 }
 
-function sortTbl(col) { if (SCOL === col) SDIR *= -1; else { SCOL = col; SDIR = col <= 2 ? 1 : -1; } render(); }
+function sortTbl(col) {
+  if (SCOL === col) SDIR *= -1;
+  else { SCOL = col; SDIR = col <= 2 ? 1 : -1; }
+  render();
+}
 function togNames() { NAMES = !NAMES; ['tog-n', 'tog-n2'].forEach(function (id) { var el = document.getElementById(id); if (el) el.classList.toggle('on', NAMES); }); render(); }
 function togQuads() { QUADS = !QUADS; ['tog-q', 'tog-q2'].forEach(function (id) { var el = document.getElementById(id); if (el) el.classList.toggle('on', QUADS); }); render(); }
 
@@ -563,18 +431,17 @@ function setStatus(msg, tone) {
 }
 
 function loadAndRender() {
-  var files = ['fg-bat.json', 'fg-pit.json'];
-  if (HAS_STATCAST) files.push('sv-bat.json', 'sv-pit.json');
+  var files = ['sa-bat.json', 'sa-pit.json'];
   setStatus('Loading ' + LEVEL_LABEL + ' data\u2026');
   return window.MiLBData.loadLevel(LEVEL, files).then(function (bundle) {
-    var fgBat  = bundle['fg-bat.json']  || [];
-    var fgPit  = bundle['fg-pit.json']  || [];
-    var svBat  = bundle['sv-bat.json']  || [];
-    var svPit  = bundle['sv-pit.json']  || [];
-    DB.hitters  = mergeHitters(fgBat, svBat, 0);
-    DB.pitchers = mergePitchers(fgPit, svPit, 0);
+    DB.hitters  = Array.isArray(bundle['sa-bat.json']) ? bundle['sa-bat.json'] : [];
+    DB.pitchers = Array.isArray(bundle['sa-pit.json']) ? bundle['sa-pit.json'] : [];
+    // Ensure pitcher rows have a role field (fetcher sets it, but guard here).
+    DB.pitchers.forEach(function (p) {
+      if (!p.role && p.g && p.gs != null) p.role = (p.gs / p.g >= 0.5) ? 'SP' : 'RP';
+    });
     if (!DB.hitters.length && !DB.pitchers.length) {
-      setStatus('No data yet — updating&hellip;', 'warn');
+      setStatus('No data yet — updating\u2026', 'warn');
     } else {
       setStatus('Loaded ' + DB.hitters.length + ' hitters / ' + DB.pitchers.length + ' pitchers');
     }
@@ -590,17 +457,16 @@ function loadAndRender() {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function init() {
-  // Hitters/pitchers tab wiring
-  var hit = document.getElementById('ptab-hit'); if (hit) hit.addEventListener('click', function () { setMode('hitters'); });
-  var pit = document.getElementById('ptab-pit'); if (pit) pit.addEventListener('click', function () { setMode('pitchers'); });
-  // min label
-  document.getElementById('min-lbl').textContent = 'Min AB';
+  var hit = document.getElementById('ptab-hit');
+  if (hit) hit.addEventListener('click', function () { setMode('hitters'); });
+  var pit = document.getElementById('ptab-pit');
+  if (pit) pit.addEventListener('click', function () { setMode('pitchers'); });
+  document.getElementById('min-lbl').textContent = 'Min PA';
   document.getElementById('min-v').value = 30;
   updAge();
   loadAndRender();
 }
 
-// Expose the handful of inline-onclick helpers the rendered HTML needs.
 window.MiLBExplorer = {
   setMode: setMode,
   togNames: togNames,

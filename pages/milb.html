@@ -9,9 +9,9 @@
 <link rel="stylesheet" href="../css/styles.css">
 <link rel="stylesheet" href="../css/milb.css">
 <style>
-  /* Inline styles for the AAA-only rollout. These override the disabled-card
-     appearance for AA / A+ / FSL so it's clear those levels are coming soon.
-     Remove these rules when enabling the other levels in a later PR. */
+  /* Inline styles for the AAA + FSL rollout. AA and A+ remain disabled cards
+     until they're added in a later iteration. Remove these rules when
+     enabling AA / A+ later on. */
   .milb-card.milb-card-coming {
     opacity: 0.55;
     pointer-events: none;
@@ -34,6 +34,17 @@
     border: 1px solid #c9c9c9;
     padding: 2px 8px;
     border-radius: 3px;
+  }
+  /* Stats API badge matches the new source tagging on per-level pages */
+  .milb-badge-sa {
+    background: rgba(29,78,216,.08);
+    color: #1D4ED8;
+    border: 1px solid rgba(29,78,216,.2);
+  }
+  .milb-badge-calc {
+    background: rgba(4,120,87,.08);
+    color: #047857;
+    border: 1px solid rgba(4,120,87,.2);
   }
 </style>
 </head>
@@ -71,25 +82,34 @@
   </div>
 
   <div class="milb-cards" id="milb-cards">
-    <!-- AAA: live in this rollout -->
+    <!-- AAA: live -->
     <a class="milb-card" href="milb-aaa.html">
       <div class="milb-card-level">AAA</div>
       <div class="milb-card-leagues">International &middot; Pacific Coast</div>
       <div class="milb-card-badges">
-        <span class="milb-badge milb-badge-fg">FanGraphs</span>
-        <span class="milb-badge milb-badge-sv">Statcast</span>
+        <span class="milb-badge milb-badge-sa">Stats API</span>
+        <span class="milb-badge milb-badge-calc">Computed</span>
       </div>
       <div class="milb-card-updated" data-level="aaa">Loading&hellip;</div>
     </a>
 
-    <!-- AA / A+ / FSL: placeholder cards for the AAA-only rollout. These are
-         visually disabled and non-clickable. They'll be re-enabled as each
-         level is added in a follow-up PR. -->
+    <!-- FSL: live -->
+    <a class="milb-card" href="milb-fsl.html">
+      <div class="milb-card-level">FSL</div>
+      <div class="milb-card-leagues">Florida State League (Low-A)</div>
+      <div class="milb-card-badges">
+        <span class="milb-badge milb-badge-sa">Stats API</span>
+        <span class="milb-badge milb-badge-calc">Computed</span>
+      </div>
+      <div class="milb-card-updated" data-level="fsl">Loading&hellip;</div>
+    </a>
+
+    <!-- AA / A+: placeholder cards. Re-enable as each level is added. -->
     <div class="milb-card milb-card-coming" aria-disabled="true">
       <div class="milb-card-level">AA</div>
       <div class="milb-card-leagues">Eastern &middot; Southern &middot; Texas</div>
       <div class="milb-card-badges">
-        <span class="milb-badge milb-badge-fg">FanGraphs</span>
+        <span class="milb-badge milb-badge-sa">Stats API</span>
       </div>
       <div class="milb-card-updated">Launching next</div>
     </div>
@@ -97,33 +117,24 @@
       <div class="milb-card-level">A+</div>
       <div class="milb-card-leagues">California &middot; Carolina &middot; South Atlantic</div>
       <div class="milb-card-badges">
-        <span class="milb-badge milb-badge-fg">FanGraphs</span>
-      </div>
-      <div class="milb-card-updated">Launching next</div>
-    </div>
-    <div class="milb-card milb-card-coming" aria-disabled="true">
-      <div class="milb-card-level">FSL</div>
-      <div class="milb-card-leagues">Florida State League (Low-A)</div>
-      <div class="milb-card-badges">
-        <span class="milb-badge milb-badge-fg">FanGraphs</span>
-        <span class="milb-badge milb-badge-sv">Statcast</span>
+        <span class="milb-badge milb-badge-sa">Stats API</span>
       </div>
       <div class="milb-card-updated">Launching next</div>
     </div>
   </div>
 
   <div class="milb-footer">
-    Data &mdash; <a href="https://www.fangraphs.com" target="_blank">FanGraphs Minor League Leaders</a>
-    &middot; <a href="https://baseballsavant.mlb.com" target="_blank">Baseball Savant MiLB Statcast</a>
+    Data &mdash; <a href="https://statsapi.mlb.com" target="_blank">MLB Stats API</a>
+    &middot; Advanced metrics computed from raw components (2024 FanGraphs weights)
     &middot; Refreshed daily via GitHub Actions
   </div>
 </div>
 
 <script src="../js/milb-data.js"></script>
 <script>
-// Populate the AAA card's "last updated" badge. In the AAA-only rollout,
-// only AAA has live data, so we skip the other levels' cards (they're
-// static "Launching next" placeholders and are not clickable).
+// Populate the AAA + FSL cards' "last updated" badges. In this rollout,
+// only AAA + FSL have live data; the other levels' cards are static
+// "Launching next" placeholders and are not clickable.
 (function () {
   window.MiLBData.loadMeta().then(function (meta) {
     if (!meta || !meta.counts) return;
