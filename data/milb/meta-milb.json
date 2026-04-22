@@ -1,14 +1,14 @@
 {
-  "fetchedAt": "2026-04-21T09:57:54.446Z",
+  "fetchedAt": "2026-04-22T09:58:33.173Z",
   "season": 2026,
-  "daysInSeason": 24,
+  "daysInSeason": 25,
   "thresholds": {
     "fgQualBat": 10,
     "fgQualPit": 0,
     "svMin": 1,
-    "daysIn": 24
+    "daysIn": 25
   },
-  "enabled": false,
+  "enabled": true,
   "counts": {
     "aaa.fg-bat.json": 0,
     "aaa.fg-pit.json": 0,
