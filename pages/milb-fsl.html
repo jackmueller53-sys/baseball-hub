@@ -3,23 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Baseball Hub &mdash; AAA Explorer</title>
+<title>Baseball Hub &mdash; FSL Explorer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../css/styles.css">
 <link rel="stylesheet" href="../css/milb.css">
 <style>
-  /* ── Source tag classes for the Stats API rebuild ──────────────────────
-     Three tiers for where each axis value comes from:
-       sa   — Stats API core season stats (AVG, OBP, HR, ERA, etc.)
-       adv  — Stats API seasonAdvanced (ISO, BABIP, K%, BB%, Whiff%, etc.)
-       calc — Derived in the fetcher (wOBA, FIP, BB/K, HR%, K-BB%)
-     Colours kept in the existing Baseball Hub accent palette so the new
-     tags feel like the familiar FG/SV tags they replace. */
+  /* Source tag classes for the Stats API rebuild — see milb-aaa.html for notes */
   .tag-sa   { background: rgba(29,78,216,.08);  color:#1D4ED8; border-color: rgba(29,78,216,.20); }
   .tag-adv  { background: rgba(91,33,182,.08);  color:#5B21B6; border-color: rgba(91,33,182,.20); }
   .tag-calc { background: rgba(4,120,87,.08);   color:#047857; border-color: rgba(4,120,87,.20); }
-  /* Source-bar labels that match */
   .slbl-sa   { background: rgba(29,78,216,.10);  color:#1D4ED8; }
   .slbl-adv  { background: rgba(91,33,182,.10);  color:#5B21B6; }
   .slbl-calc { background: rgba(4,120,87,.10);   color:#047857; }
@@ -78,7 +71,7 @@
         <span class="src-pill pill-calc"><span class="pill-dot"></span>Computed</span>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
-        <span class="s-badge badge-final" id="s-badge">AAA &middot; 2026 LIVE</span>
+        <span class="s-badge badge-final" id="s-badge">FSL &middot; 2026 LIVE</span>
       </div>
     </div>
   </div>
@@ -130,15 +123,15 @@
           <div class="sel-wrap"><select id="tm-sel" onchange="MiLBExplorer.render()"><option>All Teams</option></select></div>
         </div>
         <div class="filter-row">
-          <label class="filter-lbl">Age <span id="age-disp" style="color:var(--fg2)">18&ndash;45</span></label>
+          <label class="filter-lbl">Age <span id="age-disp" style="color:var(--fg2)">17&ndash;30</span></label>
           <div class="age-pair">
-            <input type="number" id="age-mn" value="18" min="17" max="45" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
-            <input type="number" id="age-mx" value="45" min="17" max="45" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+            <input type="number" id="age-mn" value="17" min="16" max="35" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+            <input type="number" id="age-mx" value="30" min="16" max="35" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
           </div>
         </div>
         <div class="filter-row">
           <label class="filter-lbl" id="min-lbl">Min PA</label>
-          <input type="number" id="min-v" value="30" min="0" max="700" step="5" onchange="MiLBExplorer.render()">
+          <input type="number" id="min-v" value="20" min="0" max="700" step="5" onchange="MiLBExplorer.render()">
         </div>
         <div class="filter-row" id="role-row" style="display:none">
           <label class="filter-lbl">Role</label>
@@ -194,7 +187,7 @@
 
       <div class="tbl-card">
         <div class="tbl-head">
-          <div class="tbl-title">AAA Leaderboard <span id="tbl-mode" style="color:var(--fg2);font-weight:400">&mdash; Hitters</span></div>
+          <div class="tbl-title">FSL Leaderboard <span id="tbl-mode" style="color:var(--fg2);font-weight:400">&mdash; Hitters</span></div>
           <div class="tbl-note" id="tbl-note">Sorted by Y-axis &darr;</div>
         </div>
         <div class="tbl-wrap"><table><thead id="t-head"></thead><tbody id="t-body"></tbody></table></div>
@@ -207,8 +200,8 @@
       <div>
         <div class="ft">Data Sources</div>
         <div class="fi"><span class="fb" style="background:rgba(29,78,216,.08);color:#1D4ED8;border:1px solid rgba(29,78,216,.2);border-radius:4px;padding:2px 6px">Stats API</span>
-          <div class="fn">MLB Stats API &mdash; AAA hitter + pitcher season &amp; seasonAdvanced<br>
-            <a href="https://statsapi.mlb.com/api/v1/stats?stats=season&group=hitting&season=2026&sportId=11" target="_blank">statsapi.mlb.com/api/v1/stats &middot; sportId=11 (AAA)</a></div></div>
+          <div class="fn">MLB Stats API &mdash; FSL hitter + pitcher season &amp; seasonAdvanced<br>
+            <a href="https://statsapi.mlb.com/api/v1/stats?stats=season&group=hitting&season=2026&sportId=14&leagueId=123" target="_blank">statsapi.mlb.com/api/v1/stats &middot; sportId=14 leagueId=123 (FSL)</a></div></div>
         <div class="fi"><span class="fb" style="background:rgba(4,120,87,.08);color:#047857;border:1px solid rgba(4,120,87,.2);border-radius:4px;padding:2px 6px">Computed</span>
           <div class="fn">wOBA &mdash; 2024 FanGraphs linear weights on raw components<br>
             FIP &mdash; standard formula with per-pool constant (league-avg FIP == league-avg ERA)</div></div>
@@ -216,8 +209,8 @@
       <div>
         <div class="ft">Methodology</div>
         <div class="fn">
-          <b>Scope:</b> AAA hitters &amp; pitchers, full-season 2026<br>
-          <b>Leagues:</b> International League + Pacific Coast League (sportId = 11)<br>
+          <b>Scope:</b> FSL hitters &amp; pitchers, full-season 2026<br>
+          <b>Leagues:</b> Florida State League (sportId = 14, leagueId = 123)<br>
           <b>Origin (0,0):</b> Filtered group average &mdash; quadrant colour = perf vs peers<br>
           <b>Role:</b> SP if games started / games &ge; 50%, else RP<br>
           <b>Refresh:</b> GitHub Actions cron, daily at 08:30 UTC
@@ -237,9 +230,9 @@
 </div>
 
 <script>
-  window.MILB_LEVEL        = 'aaa';
+  window.MILB_LEVEL        = 'fsl';
   window.MILB_HAS_STATCAST = false;
-  window.MILB_LEVEL_LABEL  = 'AAA';
+  window.MILB_LEVEL_LABEL  = 'FSL';
 </script>
 <script src="../js/milb-data.js"></script>
 <script src="../js/milb-explorer.js"></script>

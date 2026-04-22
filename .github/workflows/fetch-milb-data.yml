@@ -3,6 +3,11 @@ name: Fetch MiLB 2026 Data
 # Runs daily 30 minutes after the MLB job so the two pipelines never step on
 # each other's commits. Totally independent from fetch-data.yml — if this
 # workflow fails or is disabled, the MLB pipeline is unaffected.
+#
+# As of the Stats API rebuild this fetcher pulls AAA (sportId=11) and FSL
+# (sportId=14, leagueId=123) from statsapi.mlb.com/api/v1/stats. Savant MiLB
+# scraping was removed — the Savant expected_statistics endpoint silently
+# ignores MiLB filters so the AAA probe was returning MLB data instead.
 
 on:
   schedule:
@@ -29,8 +34,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Fetch 2026 MiLB data (FanGraphs + Savant)
-        run: node scripts/fetch-milb-2026.js
+      - name: Fetch 2026 MiLB data (MLB Stats API — AAA + FSL)
+        run: node scripts/fetch-milb-statsapi.js
 
       - name: Check for data changes
         id: check
@@ -52,6 +57,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git commit -m "Auto-update MiLB 2026 data — $(date -u '+%Y-%m-%d %H:%M UTC')
 
-          Fetched from FanGraphs Minor League Leaders API + Baseball Savant MiLB
-          Statcast leaderboards. Triggered by: ${{ github.event_name }}"
+          Fetched from MLB Stats API: AAA (sportId=11) + FSL (sportId=14, leagueId=123).
+          season + seasonAdvanced splits; wOBA + FIP computed in-fetcher.
+          Triggered by: ${{ github.event_name }}"
           git push
