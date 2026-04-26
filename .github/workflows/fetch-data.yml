@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write  # Needed to commit data files back to repo
+  actions: write   # Needed to dispatch deploy.yml after a data commit
 
 jobs:
   fetch:
@@ -58,3 +59,18 @@ jobs:
           Fetched from FanGraphs API + Baseball Savant.
           Triggered by: ${{ github.event_name }}"
           git push
+
+      # Why this step exists:
+      # Commits pushed with the default GITHUB_TOKEN do NOT trigger other
+      # workflows (GitHub's loop-prevention rule). deploy.yml listens on
+      # `push: main`, so without this dispatch the new data files never
+      # get published to GitHub Pages and the live site stays stale.
+      # workflow_dispatch IS exempt from the no-trigger rule, so calling it
+      # explicitly is the supported fix.
+      - name: Trigger Pages deploy (deploy.yml)
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run deploy.yml --ref main
+          echo "Dispatched deploy.yml on main"
