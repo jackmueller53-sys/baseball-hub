@@ -35,6 +35,8 @@ var QUADS  = true;
 var SCOL   = null;
 var SDIR   = 1;
 var DB     = { hitters: [], pitchers: [] };
+// Last-rendered sorted table rows — used by the row-click → openCard handler.
+var TBL_ROWS = [];
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 function mean(a) { return a.length ? a.reduce(function (s, v) { return s + v; }, 0) / a.length : 0; }
@@ -310,7 +312,8 @@ function drawScatter(data, xl, yl, xDir, yDir) {
       + ' style="cursor:pointer;transition:r .1s,fill-opacity .1s"'
       + ' onmouseenter="MiLBExplorer.showTip(event,' + i + ')" onmouseleave="MiLBExplorer.hideTip()"'
       + ' onmouseover="this.setAttribute(\'r\',\'' + (r + 2) + '\');this.style.fillOpacity=\'1\'"'
-      + ' onmouseout="this.setAttribute(\'r\',\'' + r + '\');this.style.fillOpacity=\'.82\'"/>';
+      + ' onmouseout="this.setAttribute(\'r\',\'' + r + '\');this.style.fillOpacity=\'.82\'"'
+      + ' onclick="MiLBExplorer.openCardFromScatter(' + i + ')"/>';
   });
   svg.innerHTML = h; svg._vld = vld; svg._xl = xl; svg._yl = yl;
 }
@@ -391,14 +394,16 @@ function drawTable(data, xl, yl) {
   document.getElementById('t-head').innerHTML = '<tr>' + cols.map(function (c, i) {
     return '<th class="' + (i === si ? 'sorted' : '') + '" onclick="MiLBExplorer.sortTbl(' + i + ')">' + c + (i === si ? (SDIR > 0 ? ' \u2193' : ' \u2191') : '') + '</th>';
   }).join('') + '</tr>';
-  document.getElementById('t-body').innerHTML = sorted.map(function (p) {
+  // Stash sorted rows so the row-click handler can grab the underlying player
+  TBL_ROWS = sorted;
+  document.getElementById('t-body').innerHTML = sorted.map(function (p, idx) {
     var sl = isH
       ? ((p.avg != null ? p.avg.toFixed(3) : '--') + '/' + (p.ops != null ? p.ops.toFixed(3) : '--')
          + '/' + (p.hr != null ? Math.round(p.hr) : '--') + '/' + (p.sb != null ? Math.round(p.sb) : '--')
          + '/' + (p.woba != null ? p.woba.toFixed(3) : '--'))
       : ((p.era != null ? p.era.toFixed(2) : '--') + '/' + (p.fip != null ? p.fip.toFixed(2) : '--')
          + '/' + (p.whip != null ? p.whip.toFixed(2) : '--') + '/' + (p.k_pct != null ? p.k_pct.toFixed(1) + '%' : '--'));
-    return '<tr>'
+    return '<tr style="cursor:pointer" onclick="MiLBExplorer.openCardFromTable(' + idx + ')">'
       + '<td class="td-name">' + (p.name || '--') + '</td>'
       + '<td><span class="td-tm">' + (p.team || '--') + '</span></td>'
       + '<td style="color:var(--fg2);font-size:10px">' + (isH ? (p.pos || '--') : (p.role || '--')) + '</td>'
@@ -419,6 +424,33 @@ function sortTbl(col) {
   if (SCOL === col) SDIR *= -1;
   else { SCOL = col; SDIR = col <= 2 ? 1 : -1; }
   render();
+}
+
+// ── PLAYER CARD OPENERS ──────────────────────────────────────────────────────
+// Both wire into the same MiLBCards drawer. Pass the canonical row from DB
+// (not the chart-shape with px/py/cx/cy) so the card sees the original
+// fetcher fields (h, ab, hr, woba, etc.) — match by player_id.
+function lookupPlayer(d) {
+  if (!d) return null;
+  var pool = MODE === 'pitchers' ? DB.pitchers : DB.hitters;
+  if (d.player_id != null) {
+    var byId = pool.find(function (r) { return r.player_id === d.player_id; });
+    if (byId) return byId;
+  }
+  return d;
+}
+function openCardFromScatter(i) {
+  if (!window.MiLBCards) return;
+  var svg = document.getElementById('svg-plot');
+  var d = svg && svg._vld ? svg._vld[i] : null;
+  if (!d) return;
+  window.MiLBCards.open(lookupPlayer(d), MODE, DB, LEVEL_LABEL);
+}
+function openCardFromTable(i) {
+  if (!window.MiLBCards) return;
+  var d = TBL_ROWS[i];
+  if (!d) return;
+  window.MiLBCards.open(lookupPlayer(d), MODE, DB, LEVEL_LABEL);
 }
 function togNames() { NAMES = !NAMES; ['tog-n', 'tog-n2'].forEach(function (id) { var el = document.getElementById(id); if (el) el.classList.toggle('on', NAMES); }); render(); }
 function togQuads() { QUADS = !QUADS; ['tog-q', 'tog-q2'].forEach(function (id) { var el = document.getElementById(id); if (el) el.classList.toggle('on', QUADS); }); render(); }
@@ -475,7 +507,9 @@ window.MiLBExplorer = {
   render: render,
   updAge: updAge,
   showTip: showTip,
-  hideTip: hideTip
+  hideTip: hideTip,
+  openCardFromScatter: openCardFromScatter,
+  openCardFromTable: openCardFromTable
 };
 
 if (document.readyState === 'loading') {
