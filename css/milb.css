@@ -159,3 +159,137 @@
 }
 .milb-footer a { color: var(--fg2); text-decoration: none; }
 .milb-footer a:hover { color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MiLB Player Card additions
+   Re-uses the .pc-* base classes from css/styles.css and adds the panels
+   specific to the MiLB drawer (Slash Line, Plate Discipline bars, Power
+   gauges, vs-Level-Avg footer, footnote, sample-size handling).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Stats API source pill — orange so it reads as analogous to the SAVANT
+   (blue) and FANGRAPHS (green) pills on the MLB card */
+.cp-src-mlb { background: rgba(194,65,12,.08); color: var(--orange); border: 1px solid rgba(194,65,12,.2); }
+
+/* Level pill in the .pc-meta line (e.g. "AAA · PCL") */
+.pc-level-pill {
+  background: rgba(146,64,14,.10);
+  border: 1px solid rgba(146,64,14,.25);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 1.5px;
+}
+
+/* "Small Sample" chip in the header when player is below qualified PA / IP */
+.pc-sss-chip {
+  background: rgba(146,64,14,.10);
+  color: var(--gold);
+  border: 1px solid rgba(146,64,14,.30);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+/* Slash-line big-number panel (Slash Line Profile / Run Prevention) */
+.slash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.slash-cell { padding: 10px 12px; background: rgba(0,0,0,.015); border: 1px solid rgba(0,0,0,.05); border-radius: 6px; display: flex; flex-direction: column; gap: 2px; }
+.slash-val  { font-family: var(--fm); font-size: 18px; font-weight: 600; color: var(--fg); }
+.slash-lbl  { font-family: var(--fh); font-size: 8px; font-weight: 700; letter-spacing: 2px; color: var(--fg2); text-transform: uppercase; }
+
+/* Plate-discipline horizontal bars vs league average */
+.pd-row {
+  display: grid; grid-template-columns: 60px 1fr 60px;
+  align-items: center; gap: 10px; padding: 5px 0;
+  font-family: var(--fh); font-size: 10px; letter-spacing: 1px; color: var(--fg2);
+}
+.pd-row .pd-label { font-weight: 700; color: var(--fg); text-transform: uppercase; font-size: 10px; letter-spacing: 1.5px; }
+.pd-bar-track { position: relative; height: 14px; background: rgba(0,0,0,.04); border-radius: 3px; overflow: hidden; }
+.pd-bar-fill  { position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px; background: var(--blue); }
+.pd-bar-fill.bad  { background: var(--red); }
+.pd-bar-fill.good { background: var(--green); }
+.pd-bar-avg   { position: absolute; top: -2px; bottom: -2px; width: 2px; background: rgba(45,36,24,.55); }
+.pd-val       { font-family: var(--fm); font-size: 11px; font-weight: 600; color: var(--fg); text-align: right; }
+.pd-legend    {
+  font-family: var(--fh); font-size: 8px; letter-spacing: 1.5px;
+  color: var(--fg2); text-transform: uppercase;
+  display: flex; gap: 14px; align-items: center; margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid rgba(0,0,0,.06); flex-wrap: wrap;
+}
+.pd-legend .swatch {
+  display: inline-block; width: 8px; height: 8px;
+  border-radius: 2px; margin-right: 5px; vertical-align: middle;
+}
+
+/* Counting-stats / stat-line table inside .stat-section */
+.stat-tbl { width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 11px; }
+.stat-tbl th {
+  text-align: left; padding: 5px 8px;
+  font-family: var(--fh); font-size: 8px; font-weight: 700; letter-spacing: 2px;
+  color: var(--fg2); text-transform: uppercase; border-bottom: 1px solid var(--border);
+}
+.stat-tbl td {
+  padding: 5px 8px;
+  font-family: var(--fm); font-size: 11px; color: var(--fg);
+  border-bottom: 1px solid rgba(0,0,0,.04);
+}
+.stat-tbl td:first-child {
+  font-family: var(--fh); font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  color: var(--fg2); text-transform: uppercase;
+}
+
+/* Power-gauge / quality-vs-hitters meter grid */
+.gauge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.gauge      { padding: 9px 12px; background: rgba(0,0,0,.015); border: 1px solid rgba(0,0,0,.05); border-radius: 6px; }
+.gauge-top  { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.gauge-label{ font-family: var(--fh); font-size: 8px; font-weight: 700; letter-spacing: 2px; color: var(--fg2); text-transform: uppercase; }
+.gauge-val  { font-family: var(--fm); font-size: 14px; font-weight: 600; color: var(--fg); }
+.gauge-meter      { margin-top: 6px; height: 6px; background: rgba(0,0,0,.05); border-radius: 3px; position: relative; overflow: hidden; }
+.gauge-meter-fill { position: absolute; top: 0; left: 0; height: 100%; background: var(--green); border-radius: 3px; }
+.gauge-meter-fill.mid { background: var(--gold); }
+.gauge-meter-fill.bad { background: var(--red); }
+.gauge-foot { margin-top: 5px; font-family: var(--fh); font-size: 8px; letter-spacing: 1.5px; color: var(--fg2); text-transform: uppercase; }
+.gauge-foot .vs     { color: var(--green); font-weight: 700; }
+.gauge-foot .vs.bad { color: var(--red); }
+.gauge-foot .vs.mid { color: var(--gold); }
+
+/* Section label above the bottom vs-avg table */
+.section-lbl {
+  font-family: var(--fh); font-size: 9px; font-weight: 700; letter-spacing: 2px;
+  color: var(--fg2); text-transform: uppercase; margin-bottom: 8px;
+}
+
+/* Footnote band at the bottom of every card */
+.pc-footnote {
+  padding: 10px 18px 16px;
+  background: rgba(146,64,14,.04);
+  border-top: 1px solid rgba(146,64,14,.10);
+  font-family: var(--fh); font-size: 9px; letter-spacing: 1.5px;
+  color: var(--gold); text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.pc-footnote::before {
+  content: "i";
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--gold); color: #fff;
+  font-family: var(--fh); font-size: 9px; font-weight: 900; font-style: italic;
+  flex-shrink: 0;
+}
+
+/* Sample-size gray-out — applied to comparison-bearing sections when the
+   player is below the qualified PA / IP threshold. The vs-avg row, the
+   plate-discipline bars, and the power/quality gauges all dim so the user
+   can see them but understands the comparisons are unreliable. */
+.pc-sss { opacity: .55; filter: grayscale(.35); position: relative; }
+.pc-sss::after {
+  content: "Below qualified threshold — comparisons indicative only";
+  position: absolute; top: 6px; right: 8px;
+  font-family: var(--fh); font-size: 8px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--gold); text-transform: uppercase;
+  background: rgba(146,64,14,.08); border: 1px solid rgba(146,64,14,.20);
+  border-radius: 3px; padding: 2px 6px;
+  pointer-events: none;
+}
