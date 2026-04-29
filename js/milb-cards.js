@@ -2,20 +2,20 @@
    BASEBALL HUB — MiLB PLAYER CARD DRAWER
    ─────────────────────────────────────────────────────────────────────────────
    Renders the MiLB equivalent of the MLB stats-explorer player card. Same
-   .pc-* skeleton (re-uses styles.css), but Statcast-only panels are replaced
-   with panels backed by available MLB Stats API season + seasonAdvanced data.
+   .pc-* skeleton (re-uses styles.css), backed by MLB Stats API season +
+   seasonAdvanced + expectedStatistics + pitchArsenal groups.
 
      Hitter card panels:
        • Slash Line Profile      (AVG / OBP / SLG / OPS / wOBA / BABIP)
        • Plate Discipline         (BB%, K%, Whiff%, Contact% bars vs league)
-       • Power Profile            (ISO / SLG / HR%PA / BB-K gauges vs league)
+       • Batted-Ball Profile      (xwOBA / EV / Hard-Hit% / Barrel% gauges) — Hawk-Eye
        • Stat Line table          (counting + speed)
 
      Pitcher card panels:
-       • Run Prevention           (ERA / FIP / WHIP / HR9 / AVGa / OPSa)
+       • Pitch Arsenal            (per-pitch usage / velo / whiff% / put-away%) — Hawk-Eye
        • Plate Discipline         (K%, BB%, Whiff%, Strike% bars vs league)
        • Stat Line table          (counting + workload)
-       • Quality vs Hitters       (AVGa / OPSa / HR9 / K-BB% gauges vs league)
+       • Batted-Ball Against      (xwOBA-A / xBA-A / Hard-Hit%-A / EV-A gauges) — Hawk-Eye
 
    League averages are computed live from the loaded dataset on each open
    (see computeHitterLeagueAvgs / computePitcherLeagueAvgs). Below the
@@ -23,11 +23,16 @@
    gauge/bar comparison ticks gray out and a "Small Sample" chip appears in
    the header.
 
+   Hawk-Eye coverage: every AAA park since 2023 (full); FSL is partial. When
+   a player has no xStats / pitchArsenal record, the relevant panel renders
+   with dashes and an inline "Statcast not available" notice — the rest of
+   the card continues to render normally.
+
    Public API (called by milb-explorer.js):
      window.MiLBCards.open(player, mode, db, levelLabel)
      window.MiLBCards.close()
 
-   Source: MLB Stats API (statsapi.mlb.com) — season + seasonAdvanced.
+   Source: MLB Stats API (statsapi.mlb.com).
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
 'use strict';
@@ -51,16 +56,16 @@ var SCALE = {
   bb_pct_p:      { max: 20,   dir: -1 },
   whiff_pct_p:   { max: 60,   dir:  1 },   // higher = more swing-and-miss = better
   strike_pct_p:  { max: 80,   dir:  1 },
-  // hitter power gauges
-  iso:           { max: 0.40, dir:  1 },
-  slg:           { max: 0.85, dir:  1 },
-  hr_per_pa:     { max: 10,   dir:  1 },   // pct
-  bb_k:          { max: 2.5,  dir:  1 },
-  // pitcher quality gauges
-  avg_a:         { max: 0.35, dir: -1 },
-  ops_a:         { max: 1.00, dir: -1 },
-  hr9:           { max: 4.0,  dir: -1 },
-  kbb_pct:       { max: 25,   dir:  1 }
+  // hitter batted-ball gauges (Hawk-Eye / expectedStatistics)
+  xwoba:         { max: 0.50, dir:  1 },   // xwOBA — higher better
+  ev:            { max: 95,   dir:  1 },   // average exit velocity (mph)
+  hard_hit_pct:  { max: 60,   dir:  1 },   // Hard-Hit % — higher better
+  barrel_pct:    { max: 20,   dir:  1 },   // Barrel % — higher better
+  // pitcher batted-ball-against gauges (Hawk-Eye)
+  xwoba_a:       { max: 0.45, dir: -1 },   // xwOBA against — lower better
+  xba_a:         { max: 0.35, dir: -1 },   // xBA against — lower better
+  ev_a:          { max: 95,   dir: -1 },   // EV against — lower better
+  hard_hit_pct_a:{ max: 50,   dir: -1 }    // Hard-Hit% against — lower better
 };
 
 // ── Format helpers ──────────────────────────────────────────────────────────
@@ -127,7 +132,16 @@ function computeHitterLeagueAvgs(rows) {
     whiff_pct: mean('whiff_pct'),
     contact_pct: mean('contact_pct'),
     bb_k: mean('bb_k'),
-    hr_per_pa: PA ? (HR / PA) * 100 : null  // pct, comparable to hr_pct mean
+    hr_per_pa: PA ? (HR / PA) * 100 : null,  // pct, comparable to hr_pct mean
+    // Batted-ball / Hawk-Eye averages — only meaningful when at least some
+    // qualified players have xStats. Falls to null if all xStats are null,
+    // which causes the gauge tick + delta to suppress automatically.
+    xba:          mean('xba'),
+    xslg:         mean('xslg'),
+    xwoba:        mean('xwoba'),
+    ev:           mean('ev'),
+    hard_hit_pct: mean('hard_hit_pct'),
+    barrel_pct:   mean('barrel_pct')
   };
 }
 
@@ -158,7 +172,13 @@ function computePitcherLeagueAvgs(rows) {
     obp_a: mean('obp_a'),
     slg_a: mean('slg_a'),
     ops_a: mean('ops_a'),
-    babip: mean('babip')
+    babip: mean('babip'),
+    // Batted-ball-against / Hawk-Eye averages
+    xba_a:          mean('xba_a'),
+    xslg_a:         mean('xslg_a'),
+    xwoba_a:        mean('xwoba_a'),
+    ev_a:           mean('ev_a'),
+    hard_hit_pct_a: mean('hard_hit_pct_a')
   };
 }
 
@@ -224,6 +244,49 @@ function gauge(label, value, leagueAvg, scaleKey, valFmt, qualified, deltaFmt) {
     + '</div>';
 }
 
+// ── Pitch-arsenal table ─────────────────────────────────────────────────────
+// Renders one row per pitch type sorted by usage% descending. The usage cell
+// embeds an inline bar so the eye can read "this is his fastball" at a glance.
+function arsenalRow(p) {
+  var pct = p.pct;
+  var pctW = (pct == null || isNaN(pct)) ? 0 : clamp(pct, 0, 100);
+  var pctStr = (pct == null || isNaN(pct)) ? '--' : pct.toFixed(1) + '%';
+  var velo = (p.velo == null || isNaN(p.velo)) ? '--' : p.velo.toFixed(1);
+  var whiff = (p.whiff_pct == null || isNaN(p.whiff_pct)) ? '--' : p.whiff_pct.toFixed(1) + '%';
+  var pa = (p.put_away_pct == null || isNaN(p.put_away_pct)) ? '--' : p.put_away_pct.toFixed(1) + '%';
+  return '<tr>'
+    +    '<td class="ar-type"><span class="ar-code">' + escapeHtml(p.code || '--') + '</span> ' + escapeHtml(p.type || '--') + '</td>'
+    +    '<td class="ar-usage"><div class="ar-bar"><div class="ar-bar-fill" style="width:' + pctW.toFixed(1) + '%"></div></div><span class="ar-usage-num">' + pctStr + '</span></td>'
+    +    '<td class="ar-num">' + velo + '</td>'
+    +    '<td class="ar-num">' + whiff + '</td>'
+    +    '<td class="ar-num">' + pa + '</td>'
+    +  '</tr>';
+}
+
+function arsenalTable(arsenal) {
+  if (!arsenal || !arsenal.length) {
+    return '<div class="ar-empty">Pitch-by-pitch tracking unavailable for this player.<br>'
+      +  '<span class="ar-empty-sub">Hawk-Eye coverage is full at AAA, partial at FSL.</span></div>';
+  }
+  var rows = arsenal.map(arsenalRow).join('');
+  return '<table class="arsenal-tbl"><thead><tr>'
+    +    '<th>Pitch</th><th>Usage</th><th>Velo</th><th>Whiff%</th><th>Put-Away%</th>'
+    +    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// Empty-state helper for the batted-ball gauge panels when xStats are absent.
+function bbAbsent(p, fields) {
+  for (var i = 0; i < fields.length; i++) {
+    var v = p[fields[i]];
+    if (v != null && !isNaN(v)) return false;
+  }
+  return true;
+}
+function bbEmptyMsg() {
+  return '<div class="ar-empty">Hawk-Eye batted-ball metrics unavailable for this player.<br>'
+    + '<span class="ar-empty-sub">Coverage is full at AAA, partial at FSL.</span></div>';
+}
+
 // ── vs-Avg row helper — diff sign + good/bad colour ─────────────────────────
 function vsRow(label, value, leagueAvg, dir, valFmt, diffFmt) {
   if (value == null || isNaN(value) || leagueAvg == null || isNaN(leagueAvg)) {
@@ -252,7 +315,6 @@ function vsRow(label, value, leagueAvg, dir, valFmt, diffFmt) {
 // ── Hitter card ─────────────────────────────────────────────────────────────
 function renderHitter(p, lg, levelLabel) {
   var qualified = lg && lg.qualified && (p.pa || 0) >= QUAL_PA;
-  var hr_per_pa = (p.pa && p.pa > 0) ? (p.hr / p.pa) * 100 : null;
   var levelLeague = (levelLabel || '').toUpperCase() + (p.league ? ' · ' + p.league : '');
 
   // Headline KPI strip — 5 cells matching MLB layout (AVG, OPS, wOBA, HR, ISO)
@@ -282,13 +344,17 @@ function renderHitter(p, lg, levelLabel) {
     pdBar('Contact%', p.contact_pct, qualified ? lg.contact_pct : null, 'contact_pct_h', qualified)
   ].join('');
 
-  // Power Profile gauges
-  var pgHtml = [
-    gauge('ISO',     p.iso,     qualified ? lg.iso       : null, 'iso',       fmt3, qualified),
-    gauge('SLG',     p.slg,     qualified ? lg.slg       : null, 'slg',       fmt3, qualified),
-    gauge('HR / PA', hr_per_pa, qualified ? lg.hr_per_pa : null, 'hr_per_pa', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; }),
-    gauge('BB / K',  p.bb_k,    qualified ? lg.bb_k      : null, 'bb_k',      fmt2, qualified)
+  // Batted-Ball Profile gauges (replaces Power Profile — ISO/SLG/HR-PA/BB-K
+  // were redundant with the slash-line panel + Plate Discipline; the new
+  // Statcast quality metrics carry more signal).
+  var fmtMph = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); };
+  var bbHtml = [
+    gauge('xwOBA',     p.xwoba,        qualified ? lg.xwoba        : null, 'xwoba',        fmt3, qualified),
+    gauge('Avg EV',    p.ev,           qualified ? lg.ev           : null, 'ev',           fmtMph, qualified, function (v) { return v.toFixed(1) + ' mph'; }),
+    gauge('Hard-Hit%', p.hard_hit_pct, qualified ? lg.hard_hit_pct : null, 'hard_hit_pct', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; }),
+    gauge('Barrel%',   p.barrel_pct,   qualified ? lg.barrel_pct   : null, 'barrel_pct',   function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; })
   ].join('');
+  var bbHasData = !bbAbsent(p, ['xwoba', 'ev', 'hard_hit_pct', 'barrel_pct']);
 
   // Stat line table — counting + speed
   var sl = '<table class="stat-tbl"><thead><tr><th>Metric</th><th>Value</th><th>Metric</th><th>Value</th></tr></thead><tbody>'
@@ -300,14 +366,18 @@ function renderHitter(p, lg, levelLabel) {
     + '<tr><td>HR</td><td>' + fmtInt(p.hr)  + '</td><td>HBP</td><td>' + fmtInt(p.hbp) + '</td></tr>'
     + '</tbody></table>';
 
-  // vs Level Avg footer table — 6 rows in 2 columns
+  // vs Level Avg footer table — 4 rows × 2 cols absorbing both trad metrics
+  // and the new Statcast quality metrics so the user can compare on one
+  // line whether the hitter is over- or under-performing peers.
   var rows = [];
-  rows.push(vsRow('AVG',  p.avg,    qualified ? lg.avg    : null, 1, fmt3).concat(
-            vsRow('K%',   p.k_pct,  qualified ? lg.k_pct  : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('OBP',  p.obp,    qualified ? lg.obp    : null, 1, fmt3).concat(
-            vsRow('BB%',  p.bb_pct, qualified ? lg.bb_pct : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('SLG',  p.slg,    qualified ? lg.slg    : null, 1, fmt3).concat(
-            vsRow('wOBA', p.woba,   qualified ? lg.woba   : null, 1, fmt3)));
+  rows.push(vsRow('AVG',       p.avg,          qualified ? lg.avg          : null, 1, fmt3).concat(
+            vsRow('K%',        p.k_pct,        qualified ? lg.k_pct        : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+  rows.push(vsRow('OBP',       p.obp,          qualified ? lg.obp          : null, 1, fmt3).concat(
+            vsRow('BB%',       p.bb_pct,       qualified ? lg.bb_pct       : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+  rows.push(vsRow('SLG',       p.slg,          qualified ? lg.slg          : null, 1, fmt3).concat(
+            vsRow('wOBA',      p.woba,         qualified ? lg.woba         : null, 1, fmt3)));
+  rows.push(vsRow('xwOBA',     p.xwoba,        qualified ? lg.xwoba        : null, 1, fmt3).concat(
+            vsRow('Hard-Hit%', p.hard_hit_pct, qualified ? lg.hard_hit_pct : null, 1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
   var vsRows = rows.map(function (cells) { return '<tr>' + cells.join('') + '</tr>'; }).join('');
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified PA threshold">Small Sample · PA &lt; ' + QUAL_PA + '</span>';
@@ -355,9 +425,9 @@ function renderHitter(p, lg, levelLabel) {
     +       '</div>'
     +     '</div>'
     +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel ' + (qualified ? '' : 'pc-sss') + '">'
-    +         '<div class="cp-title">Power Profile<span class="cp-src cp-src-mlb">Stats API</span></div>'
-    +         '<div class="gauge-grid">' + pgHtml + '</div>'
+    +       '<div class="chart-panel ' + (qualified && bbHasData ? '' : 'pc-sss') + '">'
+    +         '<div class="cp-title">Batted-Ball Profile<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         (bbHasData ? ('<div class="gauge-grid">' + bbHtml + '</div>') : bbEmptyMsg())
     +       '</div>'
     +       '<div class="stat-section">'
     +         '<div class="cp-title">Stat Line<span class="cp-src cp-src-mlb">Stats API</span></div>'
@@ -371,7 +441,7 @@ function renderHitter(p, lg, levelLabel) {
     +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
     +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
     +     '</div>'
-    +     '<div class="pc-footnote">No Statcast in MiLB \u2014 panels use season + seasonAdvanced splits only. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Hawk-Eye expectedStatistics. AAA has full Hawk-Eye coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
 }
@@ -389,14 +459,11 @@ function renderPitcher(p, lg, levelLabel) {
     ['K-BB%', fmtPct(p.kbb_pct, 1)]
   ];
 
-  var rp = [
-    ['ERA',         fmt2(p.era)],
-    ['FIP',         fmt2(p.fip)],
-    ['WHIP',        fmt2(p.whip)],
-    ['HR/9',        fmt2(p.hr9)],
-    ['AVG against', fmt3(p.avg_a)],
-    ['OPS against', fmt3(p.ops_a)]
-  ];
+  // Pitch Arsenal table replaces Run Prevention (ERA/FIP/WHIP/HR9/AVGa/OPSa
+  // were all redundant — ERA/FIP/WHIP are header KPIs and the rest moved
+  // to the vs-Avg footer). Source: Stats API pitchArsenal.
+  var arsenalHtml = arsenalTable(p.pitch_arsenal);
+  var hasArsenal = !!(p.pitch_arsenal && p.pitch_arsenal.length);
 
   var pdHtml = [
     pdBar('K%',       p.k_pct,      qualified ? lg.k_pct      : null, 'k_pct_p',      qualified),
@@ -405,12 +472,17 @@ function renderPitcher(p, lg, levelLabel) {
     pdBar('Strike%',  p.strike_pct, qualified ? lg.strike_pct : null, 'strike_pct_p', qualified)
   ].join('');
 
-  var qhHtml = [
-    gauge('AVG agst', p.avg_a,   qualified ? lg.avg_a   : null, 'avg_a',   fmt3, qualified),
-    gauge('OPS agst', p.ops_a,   qualified ? lg.ops_a   : null, 'ops_a',   fmt3, qualified),
-    gauge('HR / 9',   p.hr9,     qualified ? lg.hr9     : null, 'hr9',     fmt2, qualified),
-    gauge('K-BB%',    p.kbb_pct, qualified ? lg.kbb_pct : null, 'kbb_pct', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; })
+  // Batted-Ball Against gauges replace the old Quality vs Hitters panel —
+  // AVG-A / OPS-A / HR-9 / K-BB% now appear in the vs-Avg footer (and K-BB%
+  // is a header KPI). Hawk-Eye contact-quality is the higher-signal frame.
+  var fmtMph = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); };
+  var bbAHtml = [
+    gauge('xwOBA-A',   p.xwoba_a,        qualified ? lg.xwoba_a        : null, 'xwoba_a',        fmt3, qualified),
+    gauge('xBA-A',     p.xba_a,          qualified ? lg.xba_a          : null, 'xba_a',          fmt3, qualified),
+    gauge('Hard-Hit%', p.hard_hit_pct_a, qualified ? lg.hard_hit_pct_a : null, 'hard_hit_pct_a', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; }),
+    gauge('EV-A',      p.ev_a,           qualified ? lg.ev_a           : null, 'ev_a',           fmtMph, qualified, function (v) { return v.toFixed(1) + ' mph'; })
   ].join('');
+  var bbAHasData = !bbAbsent(p, ['xwoba_a', 'xba_a', 'hard_hit_pct_a', 'ev_a']);
 
   var sl = '<table class="stat-tbl"><thead><tr><th>Metric</th><th>Value</th><th>Metric</th><th>Value</th></tr></thead><tbody>'
     + '<tr><td>G</td><td>'      + fmtInt(p.g)  + '</td><td>BF</td><td>'    + fmtInt(p.bf)  + '</td></tr>'
@@ -421,13 +493,20 @@ function renderPitcher(p, lg, levelLabel) {
     + '<tr><td>HR-A</td><td>'   + fmtInt(p.hr_a) + '</td><td>HBP</td><td>' + fmtInt(p.hbp) + '</td></tr>'
     + '</tbody></table>';
 
+  // 5 rows × 2 cols. Absorbs metrics that were lost when Run Prevention +
+  // Quality vs Hitters were replaced (HR9, AVG-A, OPS-A) plus the new
+  // Hawk-Eye xStats so the user can compare contact quality on one line.
   var rows = [];
-  rows.push(vsRow('ERA',  p.era,  qualified ? lg.era  : null, -1, fmt2).concat(
-            vsRow('K%',   p.k_pct, qualified ? lg.k_pct : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('FIP',  p.fip,  qualified ? lg.fip  : null, -1, fmt2).concat(
-            vsRow('BB%',  p.bb_pct, qualified ? lg.bb_pct : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('WHIP', p.whip, qualified ? lg.whip : null, -1, fmt2).concat(
-            vsRow('OPS-A', p.ops_a, qualified ? lg.ops_a : null, -1, fmt3)));
+  rows.push(vsRow('ERA',     p.era,     qualified ? lg.era     : null, -1, fmt2).concat(
+            vsRow('K%',      p.k_pct,   qualified ? lg.k_pct   : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+  rows.push(vsRow('FIP',     p.fip,     qualified ? lg.fip     : null, -1, fmt2).concat(
+            vsRow('BB%',     p.bb_pct,  qualified ? lg.bb_pct  : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+  rows.push(vsRow('WHIP',    p.whip,    qualified ? lg.whip    : null, -1, fmt2).concat(
+            vsRow('HR/9',    p.hr9,     qualified ? lg.hr9     : null, -1, fmt2)));
+  rows.push(vsRow('AVG-A',   p.avg_a,   qualified ? lg.avg_a   : null, -1, fmt3).concat(
+            vsRow('OPS-A',   p.ops_a,   qualified ? lg.ops_a   : null, -1, fmt3)));
+  rows.push(vsRow('xwOBA-A', p.xwoba_a, qualified ? lg.xwoba_a : null, -1, fmt3).concat(
+            vsRow('Hard-Hit%-A', p.hard_hit_pct_a, qualified ? lg.hard_hit_pct_a : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
   var vsRows = rows.map(function (cells) { return '<tr>' + cells.join('') + '</tr>'; }).join('');
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified IP threshold">Small Sample · IP &lt; ' + QUAL_IP + '</span>';
@@ -458,11 +537,9 @@ function renderPitcher(p, lg, levelLabel) {
     +   '</div>'
     +   '<div class="pc-body">'
     +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel">'
-    +         '<div class="cp-title">Run Prevention<span class="cp-src cp-src-mlb">Stats API</span></div>'
-    +         '<div class="slash-grid">'
-    +           rp.map(function (s) { return '<div class="slash-cell"><div class="slash-val">' + s[1] + '</div><div class="slash-lbl">' + s[0] + '</div></div>'; }).join('')
-    +         '</div>'
+    +       '<div class="chart-panel' + (hasArsenal ? '' : ' pc-empty-panel') + '">'
+    +         '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         arsenalHtml
     +       '</div>'
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">Plate Discipline<span class="cp-src cp-src-mlb">Stats API</span></div>'
@@ -479,9 +556,9 @@ function renderPitcher(p, lg, levelLabel) {
     +         '<div class="cp-title">Stat Line<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         sl
     +       '</div>'
-    +       '<div class="chart-panel ' + (qualified ? '' : 'pc-sss') + '">'
-    +         '<div class="cp-title">Quality vs Hitters<span class="cp-src cp-src-mlb">Stats API</span></div>'
-    +         '<div class="gauge-grid">' + qhHtml + '</div>'
+    +       '<div class="chart-panel ' + (qualified && bbAHasData ? '' : 'pc-sss') + '">'
+    +         '<div class="cp-title">Batted-Ball Against<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         (bbAHasData ? ('<div class="gauge-grid">' + bbAHtml + '</div>') : bbEmptyMsg())
     +       '</div>'
     +     '</div>'
     +     '<div class="pc-bottom-tbl ' + (qualified ? '' : 'pc-sss') + '">'
@@ -491,7 +568,7 @@ function renderPitcher(p, lg, levelLabel) {
     +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
     +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
     +     '</div>'
-    +     '<div class="pc-footnote">No pitch-by-pitch in MiLB \u2014 panels use season + seasonAdvanced splits only. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Hawk-Eye pitchArsenal + expectedStatistics. AAA has full Hawk-Eye coverage; FSL is partial. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
 }
