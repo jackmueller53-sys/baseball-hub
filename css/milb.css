@@ -293,3 +293,70 @@
   border-radius: 3px; padding: 2px 6px;
   pointer-events: none;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Pitch-arsenal table (pitcher card replaces Run Prevention slash-grid).
+   One row per pitch type; the usage% cell embeds an inline bar so the
+   primary pitch reads at a glance. Hawk-Eye-derived — falls to .ar-empty
+   when the player has no tracked pitches in the dataset.
+   ══════════════════════════════════════════════════════════════════════════ */
+.arsenal-tbl {
+  width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 11px;
+}
+.arsenal-tbl th {
+  text-align: right; padding: 5px 8px;
+  font-family: var(--fh); font-size: 8px; font-weight: 700; letter-spacing: 2px;
+  color: var(--fg2); text-transform: uppercase; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.arsenal-tbl th:first-child, .arsenal-tbl th:nth-child(2) { text-align: left; }
+.arsenal-tbl td {
+  padding: 6px 8px;
+  font-family: var(--fm); font-size: 11px; color: var(--fg);
+  border-bottom: 1px solid rgba(0,0,0,.04);
+  text-align: right; white-space: nowrap;
+}
+.arsenal-tbl td.ar-type {
+  font-family: var(--fh); font-size: 11px; font-weight: 700; letter-spacing: .5px;
+  color: var(--fg); text-transform: uppercase; text-align: left;
+}
+.arsenal-tbl .ar-code {
+  display: inline-block; min-width: 28px; padding: 2px 6px; margin-right: 6px;
+  background: rgba(146,64,14,.10); color: var(--gold);
+  border: 1px solid rgba(146,64,14,.25); border-radius: 3px;
+  font-family: var(--fh); font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  text-align: center;
+}
+.arsenal-tbl td.ar-usage {
+  text-align: left; min-width: 130px;
+}
+.arsenal-tbl td.ar-usage > .ar-bar { display: inline-block; vertical-align: middle; width: 60%; min-width: 60px; }
+.arsenal-tbl td.ar-usage > .ar-usage-num { display: inline-block; vertical-align: middle; margin-left: 8px; }
+.ar-bar {
+  height: 8px; background: rgba(0,0,0,.05);
+  border-radius: 3px; overflow: hidden;
+}
+.ar-bar-fill {
+  height: 100%; background: var(--gold); border-radius: 3px;
+}
+.ar-usage-num {
+  font-family: var(--fm); font-size: 11px; font-weight: 600;
+  color: var(--fg); min-width: 42px; text-align: right;
+}
+.arsenal-tbl td.ar-num { font-family: var(--fm); font-weight: 600; }
+
+/* Empty state for arsenal table + batted-ball panels when Hawk-Eye coverage
+   doesn't exist for this player (typical at FSL). Same chrome as a normal
+   panel so the layout doesn't shift. */
+.ar-empty {
+  padding: 18px 10px;
+  text-align: center;
+  font-family: var(--fh); font-size: 10px; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--fg2); text-transform: uppercase;
+}
+.ar-empty .ar-empty-sub {
+  display: inline-block; margin-top: 6px;
+  font-size: 9px; font-weight: 500; letter-spacing: 1px;
+  color: var(--fg3);
+}
+.pc-empty-panel { background: rgba(0,0,0,.01); }
