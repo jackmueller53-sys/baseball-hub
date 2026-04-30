@@ -1,20 +1,20 @@
 {
-  "fetchedAt": "2026-04-29T10:23:20.142Z",
+  "fetchedAt": "2026-04-30T10:23:39.501Z",
   "season": 2026,
   "enabled": true,
   "source": "statsapi.mlb.com",
-  "endpoint": "/api/v1/stats (stats=season + stats=seasonAdvanced)",
+  "endpoint": "/api/v1/stats (stats=season + seasonAdvanced + expectedStatistics + pitchArsenal)",
   "levels": [
     "aaa",
     "fsl"
   ],
   "counts": {
     "aaa.sa-bat.json": 223,
-    "aaa.sa-pit.json": 52,
-    "fsl.sa-bat.json": 72,
-    "fsl.sa-pit.json": 8
+    "aaa.sa-pit.json": 55,
+    "fsl.sa-bat.json": 69,
+    "fsl.sa-pit.json": 7
   },
-  "totalRows": 355,
+  "totalRows": 354,
   "errors": [],
   "prunedLegacy": [],
   "coverage": {
@@ -38,7 +38,8 @@
     "contact_pct": "1 - Whiff%"
   },
   "notes": [
-    "Savant expected_statistics (xwOBA/xBA/xSLG/Barrel%/EV/HardHit%) is NOT included — that endpoint silently returns MLB data for all MiLB filter shapes. Dedicated Savant MiLB endpoints may work but were not probed in this pass.",
+    "Hawk-Eye-derived stats (xBA, xSLG, xwOBA, EV, Hard-Hit%, Barrel%, pitch-arsenal velo/whiff/put-away) are sourced from MLB Stats API expectedStatistics + pitchArsenal groups. AAA has full coverage since 2023; FSL coverage is partial — players without Hawk-Eye tracking will have null xStats and the player-card panels gracefully fall back to dashes.",
+    "Savant expected_statistics (the /statcast_search variant) is NOT used — that endpoint silently returns MLB data for all MiLB filter shapes. We use the Stats API endpoint instead, which is correctly scoped by sportId.",
     "FanGraphs MiLB API returned {Message:...} errors across all 4 path variants probed on 2026-04-20; not used."
   ]
 }
