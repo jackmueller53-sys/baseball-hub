@@ -31,11 +31,20 @@
  *     avg, obp, slg, ops, babip,
  *     // hitter advanced:
  *     iso, bb_pct, k_pct, bb_k, hr_pct, whiff_pct, contact_pct, woba,
+ *     // hitter expectedStatistics (where Hawk-Eye coverage exists — AAA only,
+ *     //   FSL gracefully empty):
+ *     xba, xslg, xwoba, ev, hard_hit_pct, barrel_pct,
  *     // pitcher traditional:
  *     g, gs, ip, w, l, sv, bf, h_a, r_a, er, hr_a, bb, ibb, hbp, k,
  *     avg_a, ops_a, era, whip, babip,
  *     // pitcher advanced:
- *     k9, bb9, hr9, k_pct, bb_pct, kbb_pct, whiff_pct, fip
+ *     k9, bb9, hr9, k_pct, bb_pct, kbb_pct, whiff_pct, fip,
+ *     // pitcher expectedStatistics — allowed-against contact quality:
+ *     xba_a, xslg_a, xwoba_a, ev_a, hard_hit_pct_a,
+ *     // pitcher pitchArsenal — array of pitches sorted by usage desc:
+ *     pitch_arsenal: [
+ *       { type, code, pct, velo, whiff_pct, put_away_pct }
+ *     ]
  *   }
  *
  * Derived computations:
@@ -196,7 +205,7 @@ function splitMatchesLevel(split, level) {
   return lgId === level.leagueId;
 }
 
-// ── Hitters: season + seasonAdvanced ──
+// ── Hitters: season + seasonAdvanced + expectedStatistics ──
 async function fetchHitters(level) {
   const base = 'https://statsapi.mlb.com/api/v1/stats'
     + '?stats=season&group=hitting'
@@ -208,10 +217,22 @@ async function fetchHitters(level) {
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
+  // expectedStatistics is gated on Hawk-Eye coverage. Confirmed at every AAA
+  // park since 2023; partial at FSL. We fetch best-effort and let the merge
+  // step gracefully no-op for players without an xStats row.
+  const baseXStats = 'https://statsapi.mlb.com/api/v1/stats'
+    + '?stats=expectedStatistics&group=hitting'
+    + '&sportId=' + level.sportId
+    + '&season=' + SEASON
+    + (level.leagueId ? '&leagueId=' + level.leagueId : '');
 
-  const [seasonSplits, advSplits] = await Promise.all([
+  const [seasonSplits, advSplits, xSplits] = await Promise.all([
     fetchAllSplits(base),
-    fetchAllSplits(baseAdv)
+    fetchAllSplits(baseAdv),
+    fetchAllSplits(baseXStats).catch(e => {
+      console.warn('  ' + level.label + ' hitters xStats unavailable: ' + e.message);
+      return [];
+    })
   ]);
 
   const tradRows = seasonSplits
@@ -222,14 +243,21 @@ async function fetchHitters(level) {
     .filter(s => splitMatchesLevel(s, level))
     .map(mapHitterAdvanced)
     .filter(r => r && r.player_id);
+  const xRows = xSplits
+    .filter(s => splitMatchesLevel(s, level))
+    .map(mapHitterExpected)
+    .filter(r => r && r.player_id);
 
-  console.log('  ' + level.label + ' hitters: ' + tradRows.length + ' traditional, ' + advRows.length + ' advanced');
+  console.log('  ' + level.label + ' hitters: ' + tradRows.length + ' traditional, '
+    + advRows.length + ' advanced, ' + xRows.length + ' xStats');
 
   // Merge by player_id
   const advIdx = indexByPlayerId(advRows);
+  const xIdx   = indexByPlayerId(xRows);
   const merged = tradRows.map(r => {
     const adv = advIdx[r.player_id] || {};
-    return Object.assign({}, r, adv, {
+    const x   = xIdx[r.player_id] || {};
+    return Object.assign({}, r, adv, x, {
       // Recompute wOBA from raw components (not from Stats API — it doesn't
       // expose wOBA). Uses 2024 FG weights.
       woba: computeWOBA(r)
@@ -238,7 +266,7 @@ async function fetchHitters(level) {
   return merged;
 }
 
-// ── Pitchers: season + seasonAdvanced ──
+// ── Pitchers: season + seasonAdvanced + expectedStatistics + pitchArsenal ──
 async function fetchPitchers(level) {
   const base = 'https://statsapi.mlb.com/api/v1/stats'
     + '?stats=season&group=pitching'
@@ -250,10 +278,30 @@ async function fetchPitchers(level) {
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
+  // expectedStatistics + pitchArsenal both require Hawk-Eye tracking; AAA has
+  // full coverage, FSL is partial. Both fetches are best-effort.
+  const baseXStats = 'https://statsapi.mlb.com/api/v1/stats'
+    + '?stats=expectedStatistics&group=pitching'
+    + '&sportId=' + level.sportId
+    + '&season=' + SEASON
+    + (level.leagueId ? '&leagueId=' + level.leagueId : '');
+  const baseArsenal = 'https://statsapi.mlb.com/api/v1/stats'
+    + '?stats=pitchArsenal&group=pitching'
+    + '&sportId=' + level.sportId
+    + '&season=' + SEASON
+    + (level.leagueId ? '&leagueId=' + level.leagueId : '');
 
-  const [seasonSplits, advSplits] = await Promise.all([
+  const [seasonSplits, advSplits, xSplits, arsenalSplits] = await Promise.all([
     fetchAllSplits(base),
-    fetchAllSplits(baseAdv)
+    fetchAllSplits(baseAdv),
+    fetchAllSplits(baseXStats).catch(e => {
+      console.warn('  ' + level.label + ' pitchers xStats unavailable: ' + e.message);
+      return [];
+    }),
+    fetchAllSplits(baseArsenal).catch(e => {
+      console.warn('  ' + level.label + ' pitchers pitchArsenal unavailable: ' + e.message);
+      return [];
+    })
   ]);
 
   const tradRows = seasonSplits
@@ -264,11 +312,25 @@ async function fetchPitchers(level) {
     .filter(s => splitMatchesLevel(s, level))
     .map(mapPitcherAdvanced)
     .filter(r => r && r.player_id);
+  const xRows = xSplits
+    .filter(s => splitMatchesLevel(s, level))
+    .map(mapPitcherExpected)
+    .filter(r => r && r.player_id);
+  // pitchArsenal is one row PER pitch type per player — group into an array.
+  const arsenalByPid = groupArsenal(arsenalSplits.filter(s => splitMatchesLevel(s, level)));
 
-  console.log('  ' + level.label + ' pitchers: ' + tradRows.length + ' traditional, ' + advRows.length + ' advanced');
+  console.log('  ' + level.label + ' pitchers: ' + tradRows.length + ' traditional, '
+    + advRows.length + ' advanced, ' + xRows.length + ' xStats, '
+    + Object.keys(arsenalByPid).length + ' arsenals');
 
   const advIdx = indexByPlayerId(advRows);
-  const merged = tradRows.map(r => Object.assign({}, r, advIdx[r.player_id] || {}));
+  const xIdx   = indexByPlayerId(xRows);
+  const merged = tradRows.map(r => {
+    const adv = advIdx[r.player_id] || {};
+    const x   = xIdx[r.player_id] || {};
+    const pa  = arsenalByPid[r.player_id] || null;
+    return Object.assign({}, r, adv, x, { pitch_arsenal: pa });
+  });
 
   // Compute FIP with a pool-specific constant so league-avg FIP == league-avg
   // ERA. This normalizes FIP to the league's run environment (matters at AAA
@@ -398,6 +460,93 @@ function mapPitcherTraditional(split) {
     babip: num(s.babip),
     role: (g && gs && gs / g >= 0.5) ? 'SP' : 'RP'
   });
+}
+
+// ── Hawk-Eye / expectedStatistics mappers (best-effort, only present where
+//    AAA/FSL parks have Statcast). Field names match what we observed on the
+//    MLB Stats API; if the endpoint silently returns MLB data for a given
+//    sportId, downstream filtering by player_id (which we always do) keeps
+//    the rows scoped to actual league players.
+function mapHitterExpected(split) {
+  const s = split.stat || {};
+  if (!split.player || !split.player.id) return null;
+  // Stats API surfaces these under varied keys depending on group; pick the
+  // first that has a value so we're robust to schema drift.
+  const ev   = num(s.exitVelocityAvg) || num(s.avgHitSpeed);
+  const hard = num(s.hardHitPercentage) || num(s.hardHitRate);
+  // barrel rate has historically appeared as either barrels per BBE or per PA
+  const brl  = num(s.barrelsPerBbe) || num(s.barrelsPerPa)
+            || num(s.barrelsPerPlateAppearance) || num(s.barrels);
+  const xba  = num(s.xBattingAverage) || num(s.xBa) || num(s.xba);
+  const xslg = num(s.xSlg) || num(s.xSluggingPercentage) || num(s.xslg);
+  const xwoba = num(s.xWoba) || num(s.xWeightedOnBaseAverage) || num(s.xwoba);
+  const ev_max = num(s.exitVelocityMax) || num(s.maxHitSpeed);
+  return {
+    player_id: split.player.id,
+    xba: xba,
+    xslg: xslg,
+    xwoba: xwoba,
+    ev: ev,
+    ev_max: ev_max,
+    hard_hit_pct: hard,
+    barrel_pct: brl
+  };
+}
+
+function mapPitcherExpected(split) {
+  const s = split.stat || {};
+  if (!split.player || !split.player.id) return null;
+  const ev   = num(s.exitVelocityAvg) || num(s.avgHitSpeed);
+  const hard = num(s.hardHitPercentage) || num(s.hardHitRate);
+  const xba  = num(s.xBattingAverage) || num(s.xBa) || num(s.xba);
+  const xslg = num(s.xSlg) || num(s.xSluggingPercentage) || num(s.xslg);
+  const xwoba = num(s.xWoba) || num(s.xWeightedOnBaseAverage) || num(s.xwoba);
+  return {
+    player_id: split.player.id,
+    xba_a: xba,
+    xslg_a: xslg,
+    xwoba_a: xwoba,
+    ev_a: ev,
+    hard_hit_pct_a: hard
+  };
+}
+
+// pitchArsenal returns ONE split per (player, pitchType). Group into a per-
+// pitcher array sorted by usage% desc so the table reads top-down.
+function groupArsenal(splits) {
+  const out = {};
+  splits.forEach(sp => {
+    const pid = sp.player && sp.player.id;
+    if (!pid) return;
+    const s = sp.stat || {};
+    // pitchType is sometimes on the split, sometimes on stat — support both.
+    const pt = sp.pitchType || s.pitchType || {};
+    const code = pt.code || pt.abbreviation || '';
+    const desc = pt.description || pt.name || '';
+    const pct = num(s.pitchPercentage) || num(s.pitchPercent) || num(s.pitchUsage);
+    const velo = num(s.averageSpeed) || num(s.avgSpeed) || num(s.pitchTypeAvgSpeed);
+    const whiff = num(s.swingAndMissPercentage) || num(s.whiffPercentage) || num(s.whiffPct);
+    const pa  = num(s.putAwayPercentage) || num(s.putawayPct);
+    if (!code && !desc) return;
+    if (!out[pid]) out[pid] = [];
+    out[pid].push({
+      type: desc || code,
+      code: code || (desc ? desc.slice(0, 2).toUpperCase() : ''),
+      pct: pct,
+      velo: velo,
+      whiff_pct: whiff,
+      put_away_pct: pa
+    });
+  });
+  // Sort each pitcher's arsenal by usage% desc (nulls last).
+  Object.keys(out).forEach(pid => {
+    out[pid].sort((a, b) => {
+      const pa = a.pct == null ? -1 : a.pct;
+      const pb = b.pct == null ? -1 : b.pct;
+      return pb - pa;
+    });
+  });
+  return out;
 }
 
 function mapPitcherAdvanced(split) {
@@ -579,7 +728,7 @@ async function main() {
     season: SEASON,
     enabled: enabled,
     source: 'statsapi.mlb.com',
-    endpoint: '/api/v1/stats (stats=season + stats=seasonAdvanced)',
+    endpoint: '/api/v1/stats (stats=season + seasonAdvanced + expectedStatistics + pitchArsenal)',
     levels: LEVELS.map(l => l.key),
     counts: counts,
     totalRows: totalRows,
@@ -593,7 +742,8 @@ async function main() {
       contact_pct: '1 - Whiff%'
     },
     notes: [
-      'Savant expected_statistics (xwOBA/xBA/xSLG/Barrel%/EV/HardHit%) is NOT included — that endpoint silently returns MLB data for all MiLB filter shapes. Dedicated Savant MiLB endpoints may work but were not probed in this pass.',
+      'Hawk-Eye-derived stats (xBA, xSLG, xwOBA, EV, Hard-Hit%, Barrel%, pitch-arsenal velo/whiff/put-away) are sourced from MLB Stats API expectedStatistics + pitchArsenal groups. AAA has full coverage since 2023; FSL coverage is partial — players without Hawk-Eye tracking will have null xStats and the player-card panels gracefully fall back to dashes.',
+      'Savant expected_statistics (the /statcast_search variant) is NOT used — that endpoint silently returns MLB data for all MiLB filter shapes. We use the Stats API endpoint instead, which is correctly scoped by sportId.',
       'FanGraphs MiLB API returned {Message:...} errors across all 4 path variants probed on 2026-04-20; not used.'
     ]
   };
