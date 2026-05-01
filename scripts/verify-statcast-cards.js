@@ -133,7 +133,7 @@ runScenario('Hitter WITH full Statcast', () => {
   assert(html.indexOf('Hard-Hit%') > -1, 'Hard-Hit% appears in gauges/footer');
   assert(html.indexOf('Barrel%') > -1, 'Barrel% gauge label present');
   // empty-state msg should NOT appear for full-data hitter
-  assert(html.indexOf('Hawk-Eye batted-ball metrics unavailable') === -1, 'no empty-state when data present');
+  assert(html.indexOf('Statcast batted-ball metrics unavailable') === -1, 'no empty-state when data present');
   // vs-Avg footer absorbed xwOBA + Hard-Hit%
   const vsTable = html.split('vs-avg-tbl')[1] || '';
   assert(vsTable.indexOf('xwOBA') > -1, 'vs-Avg footer has xwOBA row');
@@ -144,7 +144,7 @@ runScenario('Hitter WITHOUT Statcast (FSL fallback)', () => {
   win.MiLBCards.open(hitterNoStatcast, 'hitters', makeHitterDb(hitterNoStatcast), 'FSL');
   const html = win.document.getElementById('pc-overlay').innerHTML;
   assert(html.indexOf('Batted-Ball Profile') > -1, 'panel title still renders');
-  assert(html.indexOf('Hawk-Eye batted-ball metrics unavailable') > -1, 'empty-state message renders');
+  assert(html.indexOf('Statcast batted-ball metrics unavailable') > -1, 'empty-state message renders');
   assert(html.indexOf('full at AAA') > -1, 'sub-message references AAA/FSL coverage difference');
   // Card body should still render slash line
   assert(html.indexOf('Slash Line Profile') > -1, 'slash-line panel still renders');
@@ -181,7 +181,7 @@ runScenario('Pitcher WITHOUT Statcast (FSL fallback)', () => {
   const html = win.document.getElementById('pc-overlay').innerHTML;
   assert(html.indexOf('Pitch Arsenal') > -1, 'pitch arsenal panel title renders');
   assert(html.indexOf('Pitch-by-pitch tracking unavailable') > -1, 'arsenal empty-state renders');
-  assert(html.indexOf('Hawk-Eye batted-ball metrics unavailable') > -1, 'batted-ball-against empty-state renders');
+  assert(html.indexOf('Statcast batted-ball metrics unavailable') > -1, 'batted-ball-against empty-state renders');
   // Card body should still render Plate Discipline + Stat Line
   assert(html.indexOf('Plate Discipline') > -1, 'plate-discipline panel still renders');
   assert(html.indexOf('Stat Line') > -1, 'stat-line panel still renders');

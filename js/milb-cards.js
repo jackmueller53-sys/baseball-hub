@@ -38,8 +38,8 @@
 'use strict';
 
 // ── Sample-size thresholds for "qualified" comparisons ──────────────────────
-var QUAL_PA = 50;   // hitters
-var QUAL_IP = 15;   // pitchers
+var QUAL_PA = 10;   // hitters
+var QUAL_IP = 3;    // pitchers
 
 // ── Bar-chart / gauge reference scales (max for normalization) ──────────────
 // Tuned from the mock so AAA/FSL ranges read cleanly. Player rate is mapped
@@ -266,7 +266,7 @@ function arsenalRow(p) {
 function arsenalTable(arsenal) {
   if (!arsenal || !arsenal.length) {
     return '<div class="ar-empty">Pitch-by-pitch tracking unavailable for this player.<br>'
-      +  '<span class="ar-empty-sub">Hawk-Eye coverage is full at AAA, partial at FSL.</span></div>';
+      +  '<span class="ar-empty-sub">Statcast coverage is full at AAA, partial at FSL.</span></div>';
   }
   var rows = arsenal.map(arsenalRow).join('');
   return '<table class="arsenal-tbl"><thead><tr>'
@@ -283,7 +283,7 @@ function bbAbsent(p, fields) {
   return true;
 }
 function bbEmptyMsg() {
-  return '<div class="ar-empty">Hawk-Eye batted-ball metrics unavailable for this player.<br>'
+  return '<div class="ar-empty">Statcast batted-ball metrics unavailable for this player.<br>'
     + '<span class="ar-empty-sub">Coverage is full at AAA, partial at FSL.</span></div>';
 }
 
@@ -426,7 +426,7 @@ function renderHitter(p, lg, levelLabel) {
     +     '</div>'
     +     '<div class="pc-row pc-row-2col">'
     +       '<div class="chart-panel ' + (qualified && bbHasData ? '' : 'pc-sss') + '">'
-    +         '<div class="cp-title">Batted-Ball Profile<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         '<div class="cp-title">Batted-Ball Profile<span class="cp-src cp-src-mlb">Statcast</span></div>'
     +         (bbHasData ? ('<div class="gauge-grid">' + bbHtml + '</div>') : bbEmptyMsg())
     +       '</div>'
     +       '<div class="stat-section">'
@@ -441,7 +441,7 @@ function renderHitter(p, lg, levelLabel) {
     +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
     +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
     +     '</div>'
-    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Hawk-Eye expectedStatistics. AAA has full Hawk-Eye coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast expectedStatistics. AAA has full Statcast coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
 }
@@ -538,7 +538,7 @@ function renderPitcher(p, lg, levelLabel) {
     +   '<div class="pc-body">'
     +     '<div class="pc-row pc-row-2col">'
     +       '<div class="chart-panel' + (hasArsenal ? '' : ' pc-empty-panel') + '">'
-    +         '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>'
     +         arsenalHtml
     +       '</div>'
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
@@ -557,7 +557,7 @@ function renderPitcher(p, lg, levelLabel) {
     +         sl
     +       '</div>'
     +       '<div class="chart-panel ' + (qualified && bbAHasData ? '' : 'pc-sss') + '">'
-    +         '<div class="cp-title">Batted-Ball Against<span class="cp-src cp-src-mlb">Hawk-Eye</span></div>'
+    +         '<div class="cp-title">Batted-Ball Against<span class="cp-src cp-src-mlb">Statcast</span></div>'
     +         (bbAHasData ? ('<div class="gauge-grid">' + bbAHtml + '</div>') : bbEmptyMsg())
     +       '</div>'
     +     '</div>'
@@ -568,7 +568,7 @@ function renderPitcher(p, lg, levelLabel) {
     +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
     +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
     +     '</div>'
-    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Hawk-Eye pitchArsenal + expectedStatistics. AAA has full Hawk-Eye coverage; FSL is partial. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast pitchArsenal + expectedStatistics. AAA has full Statcast coverage; FSL is partial. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
 }
