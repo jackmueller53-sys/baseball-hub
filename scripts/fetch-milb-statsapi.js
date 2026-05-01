@@ -470,44 +470,31 @@ function mapPitcherTraditional(split) {
 function mapHitterExpected(split) {
   const s = split.stat || {};
   if (!split.player || !split.player.id) return null;
-  // Stats API surfaces these under varied keys depending on group; pick the
-  // first that has a value so we're robust to schema drift.
-  const ev   = num(s.exitVelocityAvg) || num(s.avgHitSpeed);
-  const hard = num(s.hardHitPercentage) || num(s.hardHitRate);
-  // barrel rate has historically appeared as either barrels per BBE or per PA
-  const brl  = num(s.barrelsPerBbe) || num(s.barrelsPerPa)
-            || num(s.barrelsPerPlateAppearance) || num(s.barrels);
-  const xba  = num(s.xBattingAverage) || num(s.xBa) || num(s.xba);
-  const xslg = num(s.xSlg) || num(s.xSluggingPercentage) || num(s.xslg);
-  const xwoba = num(s.xWoba) || num(s.xWeightedOnBaseAverage) || num(s.xwoba);
-  const ev_max = num(s.exitVelocityMax) || num(s.maxHitSpeed);
+  // expectedStatistics endpoint returns 4 fields keyed without an "x" prefix:
+  //   avg → xBA, slg → xSLG, woba → xwOBA, wobaCon → xwOBA on contact
+  // (probed against /stats?stats=expectedStatistics&group=hitting&sportId=11
+  // on 2026-04-30 — these are the ONLY fields returned for MiLB).
+  // EV / Hard-Hit% / Barrel% are NOT exposed for MiLB — Savant silently
+  // returns MLB data when MiLB filters are passed, so those metrics are
+  // intentionally not pulled here.
   return {
     player_id: split.player.id,
-    xba: xba,
-    xslg: xslg,
-    xwoba: xwoba,
-    ev: ev,
-    ev_max: ev_max,
-    hard_hit_pct: hard,
-    barrel_pct: brl
+    xba:   num(s.avg),
+    xslg:  num(s.slg),
+    xwoba: num(s.woba)
   };
 }
 
 function mapPitcherExpected(split) {
   const s = split.stat || {};
   if (!split.player || !split.player.id) return null;
-  const ev   = num(s.exitVelocityAvg) || num(s.avgHitSpeed);
-  const hard = num(s.hardHitPercentage) || num(s.hardHitRate);
-  const xba  = num(s.xBattingAverage) || num(s.xBa) || num(s.xba);
-  const xslg = num(s.xSlg) || num(s.xSluggingPercentage) || num(s.xslg);
-  const xwoba = num(s.xWoba) || num(s.xWeightedOnBaseAverage) || num(s.xwoba);
+  // Same shape as hitter expectedStatistics — the only fields returned are
+  // avg/slg/woba/wobaCon (xBA-A / xSLG-A / xwOBA-A / xwOBA-A on contact).
   return {
     player_id: split.player.id,
-    xba_a: xba,
-    xslg_a: xslg,
-    xwoba_a: xwoba,
-    ev_a: ev,
-    hard_hit_pct_a: hard
+    xba_a:   num(s.avg),
+    xslg_a:  num(s.slg),
+    xwoba_a: num(s.woba)
   };
 }
 
