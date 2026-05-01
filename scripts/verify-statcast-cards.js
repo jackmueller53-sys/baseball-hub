@@ -127,16 +127,18 @@ runScenario('Hitter WITH full Statcast', () => {
   assert(html.indexOf('Test Slugger') > -1, 'header shows player name');
   assert(html.indexOf('Batted-Ball Profile') > -1, 'new Batted-Ball Profile panel renders');
   assert(html.indexOf('Power Profile') === -1, 'old Power Profile panel is gone');
-  // gauge values present
+  // gauge values present — Stats API exposes 3 expected-stats fields for MiLB:
+  //   xwOBA, xBA, xSLG. EV / Hard-Hit% / Barrel% are NOT available for MiLB.
   assert(html.indexOf('xwOBA') > -1, 'xwOBA gauge label present');
-  assert(html.indexOf('Avg EV') > -1, 'Avg EV gauge label present');
-  assert(html.indexOf('Hard-Hit%') > -1, 'Hard-Hit% appears in gauges/footer');
-  assert(html.indexOf('Barrel%') > -1, 'Barrel% gauge label present');
+  assert(html.indexOf('xBA') > -1, 'xBA gauge label present');
+  assert(html.indexOf('xSLG') > -1, 'xSLG gauge label present');
   // empty-state msg should NOT appear for full-data hitter
   assert(html.indexOf('Statcast batted-ball metrics unavailable') === -1, 'no empty-state when data present');
-  // vs-Avg footer absorbed xwOBA + Hard-Hit%
+  // vs-Avg footer absorbs the 3 xStats
   const vsTable = html.split('vs-avg-tbl')[1] || '';
   assert(vsTable.indexOf('xwOBA') > -1, 'vs-Avg footer has xwOBA row');
+  assert(vsTable.indexOf('xBA') > -1, 'vs-Avg footer has xBA row');
+  assert(vsTable.indexOf('xSLG') > -1, 'vs-Avg footer has xSLG row');
 });
 
 runScenario('Hitter WITHOUT Statcast (FSL fallback)', () => {
@@ -167,7 +169,8 @@ runScenario('Pitcher WITH full Statcast + Arsenal', () => {
   assert(html.indexOf('Slider') > -1, 'slider row renders');
   assert(html.indexOf('xwOBA-A') > -1, 'xwOBA-A label appears');
   assert(html.indexOf('xBA-A') > -1, 'xBA-A label appears');
-  // vs-Avg footer absorbed HR/9, AVG-A, OPS-A, xwOBA-A, Hard-Hit%-A
+  assert(html.indexOf('xSLG-A') > -1, 'xSLG-A label appears');
+  // vs-Avg footer absorbed HR/9, AVG-A, OPS-A, xwOBA-A, xBA-A, xSLG-A
   const vsTable = html.split('vs-avg-tbl')[1] || '';
   assert(vsTable.indexOf('HR/9') > -1, 'vs-Avg has HR/9 row');
   assert(vsTable.indexOf('AVG-A') > -1, 'vs-Avg has AVG-A row');

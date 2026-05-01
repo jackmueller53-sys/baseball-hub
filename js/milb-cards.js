@@ -56,16 +56,17 @@ var SCALE = {
   bb_pct_p:      { max: 20,   dir: -1 },
   whiff_pct_p:   { max: 60,   dir:  1 },   // higher = more swing-and-miss = better
   strike_pct_p:  { max: 80,   dir:  1 },
-  // hitter batted-ball gauges (Hawk-Eye / expectedStatistics)
+  // hitter batted-ball gauges (Statcast / expectedStatistics)
+  // Note: MLB Stats API only exposes xBA / xSLG / xwOBA for MiLB (no EV /
+  // Hard-Hit% / Barrel% — those require Savant which silently swaps to MLB
+  // when MiLB filters are passed). We render only what the API provides.
   xwoba:         { max: 0.50, dir:  1 },   // xwOBA — higher better
-  ev:            { max: 95,   dir:  1 },   // average exit velocity (mph)
-  hard_hit_pct:  { max: 60,   dir:  1 },   // Hard-Hit % — higher better
-  barrel_pct:    { max: 20,   dir:  1 },   // Barrel % — higher better
-  // pitcher batted-ball-against gauges (Hawk-Eye)
+  xba:           { max: 0.40, dir:  1 },   // xBA — higher better
+  xslg:          { max: 0.65, dir:  1 },   // xSLG — higher better
+  // pitcher batted-ball-against gauges (Statcast)
   xwoba_a:       { max: 0.45, dir: -1 },   // xwOBA against — lower better
   xba_a:         { max: 0.35, dir: -1 },   // xBA against — lower better
-  ev_a:          { max: 95,   dir: -1 },   // EV against — lower better
-  hard_hit_pct_a:{ max: 50,   dir: -1 }    // Hard-Hit% against — lower better
+  xslg_a:        { max: 0.60, dir: -1 }    // xSLG against — lower better
 };
 
 // ── Format helpers ──────────────────────────────────────────────────────────
@@ -133,15 +134,12 @@ function computeHitterLeagueAvgs(rows) {
     contact_pct: mean('contact_pct'),
     bb_k: mean('bb_k'),
     hr_per_pa: PA ? (HR / PA) * 100 : null,  // pct, comparable to hr_pct mean
-    // Batted-ball / Hawk-Eye averages — only meaningful when at least some
-    // qualified players have xStats. Falls to null if all xStats are null,
-    // which causes the gauge tick + delta to suppress automatically.
-    xba:          mean('xba'),
-    xslg:         mean('xslg'),
-    xwoba:        mean('xwoba'),
-    ev:           mean('ev'),
-    hard_hit_pct: mean('hard_hit_pct'),
-    barrel_pct:   mean('barrel_pct')
+    // Batted-ball / Statcast averages — the 3 expected-stats fields the MLB
+    // Stats API exposes for MiLB. Falls to null if all xStats are null, which
+    // causes the gauge tick + delta to suppress automatically.
+    xba:   mean('xba'),
+    xslg:  mean('xslg'),
+    xwoba: mean('xwoba')
   };
 }
 
@@ -173,12 +171,11 @@ function computePitcherLeagueAvgs(rows) {
     slg_a: mean('slg_a'),
     ops_a: mean('ops_a'),
     babip: mean('babip'),
-    // Batted-ball-against / Hawk-Eye averages
-    xba_a:          mean('xba_a'),
-    xslg_a:         mean('xslg_a'),
-    xwoba_a:        mean('xwoba_a'),
-    ev_a:           mean('ev_a'),
-    hard_hit_pct_a: mean('hard_hit_pct_a')
+    // Batted-ball-against / Statcast averages — 3 expected-stats fields
+    // available from MLB Stats API for MiLB pitchers.
+    xba_a:   mean('xba_a'),
+    xslg_a:  mean('xslg_a'),
+    xwoba_a: mean('xwoba_a')
   };
 }
 
@@ -344,17 +341,16 @@ function renderHitter(p, lg, levelLabel) {
     pdBar('Contact%', p.contact_pct, qualified ? lg.contact_pct : null, 'contact_pct_h', qualified)
   ].join('');
 
-  // Batted-Ball Profile gauges (replaces Power Profile — ISO/SLG/HR-PA/BB-K
-  // were redundant with the slash-line panel + Plate Discipline; the new
-  // Statcast quality metrics carry more signal).
-  var fmtMph = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); };
+  // Batted-Ball Profile gauges — the 3 expected-stats fields the MLB Stats API
+  // exposes for MiLB: xwOBA, xBA, xSLG. Stats API does NOT expose EV /
+  // Hard-Hit% / Barrel% for AAA / FSL (Savant is silently MLB-only for those
+  // metrics), so we render only the 3 available quality signals.
   var bbHtml = [
-    gauge('xwOBA',     p.xwoba,        qualified ? lg.xwoba        : null, 'xwoba',        fmt3, qualified),
-    gauge('Avg EV',    p.ev,           qualified ? lg.ev           : null, 'ev',           fmtMph, qualified, function (v) { return v.toFixed(1) + ' mph'; }),
-    gauge('Hard-Hit%', p.hard_hit_pct, qualified ? lg.hard_hit_pct : null, 'hard_hit_pct', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; }),
-    gauge('Barrel%',   p.barrel_pct,   qualified ? lg.barrel_pct   : null, 'barrel_pct',   function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; })
+    gauge('xwOBA', p.xwoba, qualified ? lg.xwoba : null, 'xwoba', fmt3, qualified),
+    gauge('xBA',   p.xba,   qualified ? lg.xba   : null, 'xba',   fmt3, qualified),
+    gauge('xSLG',  p.xslg,  qualified ? lg.xslg  : null, 'xslg',  fmt3, qualified)
   ].join('');
-  var bbHasData = !bbAbsent(p, ['xwoba', 'ev', 'hard_hit_pct', 'barrel_pct']);
+  var bbHasData = !bbAbsent(p, ['xwoba', 'xba', 'xslg']);
 
   // Stat line table — counting + speed
   var sl = '<table class="stat-tbl"><thead><tr><th>Metric</th><th>Value</th><th>Metric</th><th>Value</th></tr></thead><tbody>'
@@ -370,14 +366,16 @@ function renderHitter(p, lg, levelLabel) {
   // and the new Statcast quality metrics so the user can compare on one
   // line whether the hitter is over- or under-performing peers.
   var rows = [];
-  rows.push(vsRow('AVG',       p.avg,          qualified ? lg.avg          : null, 1, fmt3).concat(
-            vsRow('K%',        p.k_pct,        qualified ? lg.k_pct        : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('OBP',       p.obp,          qualified ? lg.obp          : null, 1, fmt3).concat(
-            vsRow('BB%',       p.bb_pct,       qualified ? lg.bb_pct       : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
-  rows.push(vsRow('SLG',       p.slg,          qualified ? lg.slg          : null, 1, fmt3).concat(
-            vsRow('wOBA',      p.woba,         qualified ? lg.woba         : null, 1, fmt3)));
-  rows.push(vsRow('xwOBA',     p.xwoba,        qualified ? lg.xwoba        : null, 1, fmt3).concat(
-            vsRow('Hard-Hit%', p.hard_hit_pct, qualified ? lg.hard_hit_pct : null, 1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+  rows.push(vsRow('AVG',  p.avg,   qualified ? lg.avg   : null, 1, fmt3).concat(
+            vsRow('xBA',  p.xba,   qualified ? lg.xba   : null, 1, fmt3)));
+  rows.push(vsRow('SLG',  p.slg,   qualified ? lg.slg   : null, 1, fmt3).concat(
+            vsRow('xSLG', p.xslg,  qualified ? lg.xslg  : null, 1, fmt3)));
+  rows.push(vsRow('wOBA', p.woba,  qualified ? lg.woba  : null, 1, fmt3).concat(
+            vsRow('xwOBA', p.xwoba, qualified ? lg.xwoba : null, 1, fmt3)));
+  rows.push(vsRow('OBP',  p.obp,   qualified ? lg.obp   : null, 1, fmt3).concat(
+            vsRow('OPS',  p.ops,   qualified ? lg.ops   : null, 1, fmt3)));
+  rows.push(vsRow('K%',   p.k_pct, qualified ? lg.k_pct : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); }).concat(
+            vsRow('BB%',  p.bb_pct, qualified ? lg.bb_pct : null, 1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
   var vsRows = rows.map(function (cells) { return '<tr>' + cells.join('') + '</tr>'; }).join('');
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified PA threshold">Small Sample · PA &lt; ' + QUAL_PA + '</span>';
@@ -472,17 +470,15 @@ function renderPitcher(p, lg, levelLabel) {
     pdBar('Strike%',  p.strike_pct, qualified ? lg.strike_pct : null, 'strike_pct_p', qualified)
   ].join('');
 
-  // Batted-Ball Against gauges replace the old Quality vs Hitters panel —
-  // AVG-A / OPS-A / HR-9 / K-BB% now appear in the vs-Avg footer (and K-BB%
-  // is a header KPI). Hawk-Eye contact-quality is the higher-signal frame.
-  var fmtMph = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); };
+  // Batted-Ball Against gauges — the 3 expected-stats fields available from
+  // MLB Stats API for MiLB pitchers (xwOBA-A, xBA-A, xSLG-A). Stats API does
+  // NOT expose EV-A / Hard-Hit%-A for AAA / FSL.
   var bbAHtml = [
-    gauge('xwOBA-A',   p.xwoba_a,        qualified ? lg.xwoba_a        : null, 'xwoba_a',        fmt3, qualified),
-    gauge('xBA-A',     p.xba_a,          qualified ? lg.xba_a          : null, 'xba_a',          fmt3, qualified),
-    gauge('Hard-Hit%', p.hard_hit_pct_a, qualified ? lg.hard_hit_pct_a : null, 'hard_hit_pct_a', function (v) { return fmtPct(v, 1); }, qualified, function (v) { return v.toFixed(1) + 'pp'; }),
-    gauge('EV-A',      p.ev_a,           qualified ? lg.ev_a           : null, 'ev_a',           fmtMph, qualified, function (v) { return v.toFixed(1) + ' mph'; })
+    gauge('xwOBA-A', p.xwoba_a, qualified ? lg.xwoba_a : null, 'xwoba_a', fmt3, qualified),
+    gauge('xBA-A',   p.xba_a,   qualified ? lg.xba_a   : null, 'xba_a',   fmt3, qualified),
+    gauge('xSLG-A',  p.xslg_a,  qualified ? lg.xslg_a  : null, 'xslg_a',  fmt3, qualified)
   ].join('');
-  var bbAHasData = !bbAbsent(p, ['xwoba_a', 'xba_a', 'hard_hit_pct_a', 'ev_a']);
+  var bbAHasData = !bbAbsent(p, ['xwoba_a', 'xba_a', 'xslg_a']);
 
   var sl = '<table class="stat-tbl"><thead><tr><th>Metric</th><th>Value</th><th>Metric</th><th>Value</th></tr></thead><tbody>'
     + '<tr><td>G</td><td>'      + fmtInt(p.g)  + '</td><td>BF</td><td>'    + fmtInt(p.bf)  + '</td></tr>'
@@ -506,7 +502,9 @@ function renderPitcher(p, lg, levelLabel) {
   rows.push(vsRow('AVG-A',   p.avg_a,   qualified ? lg.avg_a   : null, -1, fmt3).concat(
             vsRow('OPS-A',   p.ops_a,   qualified ? lg.ops_a   : null, -1, fmt3)));
   rows.push(vsRow('xwOBA-A', p.xwoba_a, qualified ? lg.xwoba_a : null, -1, fmt3).concat(
-            vsRow('Hard-Hit%-A', p.hard_hit_pct_a, qualified ? lg.hard_hit_pct_a : null, -1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
+            vsRow('xBA-A',   p.xba_a,   qualified ? lg.xba_a   : null, -1, fmt3)));
+  rows.push(vsRow('xSLG-A',  p.xslg_a,  qualified ? lg.xslg_a  : null, -1, fmt3).concat(
+            vsRow('K-BB%',   p.kbb_pct, qualified ? lg.kbb_pct : null, 1, function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
   var vsRows = rows.map(function (cells) { return '<tr>' + cells.join('') + '</tr>'; }).join('');
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified IP threshold">Small Sample · IP &lt; ' + QUAL_IP + '</span>';
