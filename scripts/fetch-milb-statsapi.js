@@ -211,11 +211,13 @@ async function fetchHitters(level) {
     + '?stats=season&group=hitting'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
   const baseAdv = 'https://statsapi.mlb.com/api/v1/stats'
     + '?stats=seasonAdvanced&group=hitting'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
   // expectedStatistics is gated on Hawk-Eye coverage. Confirmed at every AAA
   // park since 2023; partial at FSL. We fetch best-effort and let the merge
@@ -224,6 +226,7 @@ async function fetchHitters(level) {
     + '?stats=expectedStatistics&group=hitting'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
 
   const [seasonSplits, advSplits, xSplits] = await Promise.all([
@@ -272,11 +275,13 @@ async function fetchPitchers(level) {
     + '?stats=season&group=pitching'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
   const baseAdv = 'https://statsapi.mlb.com/api/v1/stats'
     + '?stats=seasonAdvanced&group=pitching'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
   // expectedStatistics + pitchArsenal both require Hawk-Eye tracking; AAA has
   // full coverage, FSL is partial. Both fetches are best-effort.
@@ -284,11 +289,13 @@ async function fetchPitchers(level) {
     + '?stats=expectedStatistics&group=pitching'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
   const baseArsenal = 'https://statsapi.mlb.com/api/v1/stats'
     + '?stats=pitchArsenal&group=pitching'
     + '&sportId=' + level.sportId
     + '&season=' + SEASON
+    + '&playerPool=All'
     + (level.leagueId ? '&leagueId=' + level.leagueId : '');
 
   const [seasonSplits, advSplits, xSplits, arsenalSplits] = await Promise.all([
