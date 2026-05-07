@@ -377,8 +377,9 @@
 .spray-chart-svg {
   width: 100%;
   height: auto;
-  max-height: 360px;
   display: block;
+  flex: 1 1 auto;
+  min-height: 320px;
 }
 .sc-arc {
   fill: none;
@@ -537,3 +538,56 @@
   color: #B91C1C;
   background: rgba(185, 28, 28, 0.06);
 }
+
+
+/* ── Added 2026-05-08: clearer metric identification ─────────────────────── */
+
+/* Spray Chart — home plate label + event-count badge */
+.sc-home-lbl {
+  fill: rgba(45, 36, 24, 0.7);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.sc-event-count {
+  fill: rgba(45, 36, 24, 0.55);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.sc-legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg2, #6b6b6b);
+  margin-bottom: 6px;
+}
+.sc-legend-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sc-legend {
+  /* Override prior bare-flex layout — title now sits above rows */
+  display: block;
+}
+
+/* Spray Direction cone — outer-tip field labels (LF / CF / RF) */
+.bbp-spray-tip {
+  fill: rgba(45, 36, 24, 0.55);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* Make Spray Chart panel + BBP panel align top so chart fills available height */
+.chart-panel.bbp-panel { align-self: stretch; }
+
+/* Tighten BBP panel internal spacing so QoC table has room */
+.bbp-panel { gap: 10px; padding-bottom: 4px; }
+.bbp-section-lbl { margin-bottom: 4px; }

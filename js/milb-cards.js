@@ -467,13 +467,18 @@ function sprayChartSVG(events) {
     + '<path d="' + wallArc + '" class="sc-wall" />'
     + lblFt(200) + lblFt(300) + lblFt(400)
     + '<rect x="' + (SC_HP.x - 4) + '" y="' + (SC_HP.y - 2) + '" width="8" height="8" class="sc-home" />'
+    + '<text x="' + SC_HP.x + '" y="' + (SC_HP.y + 16) + '" class="sc-home-lbl" text-anchor="middle">HOME</text>'
+    + '<text x="10" y="18" class="sc-event-count">N=' + events.length + '</text>'
     + dots
     + '</svg>'
     + '<div class="sc-legend">'
-    +   '<span><span class="sc-dot" style="background:#1D4ED8"></span>Ground ball</span>'
-    +   '<span><span class="sc-dot" style="background:#047857"></span>Line drive</span>'
-    +   '<span><span class="sc-dot" style="background:#C2410C"></span>Fly ball</span>'
-    +   '<span><span class="sc-dot" style="background:#B91C1C"></span>Popup</span>'
+    +   '<div class="sc-legend-title">BATTED-BALL TYPE</div>'
+    +   '<div class="sc-legend-row">'
+    +     '<span><span class="sc-dot" style="background:#1D4ED8"></span>Ground ball</span>'
+    +     '<span><span class="sc-dot" style="background:#047857"></span>Line drive</span>'
+    +     '<span><span class="sc-dot" style="background:#C2410C"></span>Fly ball</span>'
+    +     '<span><span class="sc-dot" style="background:#B91C1C"></span>Popup</span>'
+    +   '</div>'
     + '</div>';
 }
 
@@ -504,44 +509,55 @@ function bbpDistribution(agg) {
 // 3-cone spray-direction triangle, RHB-perspective (LHB cone is mirrored
 // in the data already since classifySpray flips by stand).
 function bbpSprayCone(agg, stand) {
-  // 200x110 svg, home plate at bottom-center (100, 105)
-  var cx = 100, cy = 105;
-  var len = 95;
-  // 3 cones: left (pull for RHB), center, right (oppo for RHB)
-  // angles: full field is 90° (45° each side of vertical), each cone = 30°
-  // For RHB: pull = LF cone (left), oppo = RF cone (right)
-  // Build the 3 polygons
+  // viewBox: 240 wide × 160 tall. Home plate at bottom-center (120, 145).
+  // Cones fan upward; each label is positioned at the bisector of its cone
+  // at ~55% of cone length so it sits inside the cone (matches MLB layout).
+  var cx = 120, cy = 145;
+  var len = 110;
   function cone(angleStart, angleEnd, fill, opacity) {
-    // angles measured from vertical-up (12 o'clock), clockwise
     var aS = (angleStart - 90) * Math.PI / 180;
     var aE = (angleEnd - 90) * Math.PI / 180;
     var x1 = cx + len * Math.cos(aS), y1 = cy + len * Math.sin(aS);
     var x2 = cx + len * Math.cos(aE), y2 = cy + len * Math.sin(aE);
     return '<polygon points="' + cx + ',' + cy + ' ' + x1.toFixed(1) + ',' + y1.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1) + '" fill="' + fill + '" fill-opacity="' + opacity + '" stroke="' + fill + '" stroke-width="1" />';
   }
-  // For LHB the visual labels swap (Pull is on the right, Oppo on the left).
+  function labelPos(angleStart, angleEnd, distFrac) {
+    var bisector = (angleStart + angleEnd) / 2;
+    var rad = (bisector - 90) * Math.PI / 180;
+    return { x: cx + distFrac * len * Math.cos(rad), y: cy + distFrac * len * Math.sin(rad) };
+  }
   var isLHB = stand === 'L';
   var pullCol = '#9C2E2E', centerCol = '#7A4F1A', oppoCol = '#1F4D7A';
-  // Cones: left (LF) = -45 to -15, center -15 to +15, right (RF) +15 to +45
-  // (relative to vertical-up, clockwise)
   var pullPct = agg.pull_pct, ctrPct = agg.center_pct, oppoPct = agg.oppo_pct;
-  var leftPct = isLHB ? oppoPct : pullPct;
+  var leftPct  = isLHB ? oppoPct : pullPct;
   var rightPct = isLHB ? pullPct : oppoPct;
-  var leftLbl = isLHB ? 'OPPO' : 'PULL';
+  var leftLbl  = isLHB ? 'OPPO' : 'PULL';
   var rightLbl = isLHB ? 'PULL' : 'OPPO';
   var fmtCone = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1) + '%'; };
+  // Position labels at 55% of cone length along bisector — well inside cones,
+  // away from the home-plate vertex and the outer arc.
+  var lP = labelPos(-45, -15, 0.55);
+  var cP = labelPos(-15,  15, 0.55);
+  var rP = labelPos( 15,  45, 0.55);
+  // Field-orientation hints (LF/CENTER/RF) at the cone tips for clarity
+  var lT = labelPos(-45, -15, 1.05);
+  var cT = labelPos(-15,  15, 1.05);
+  var rT = labelPos( 15,  45, 1.05);
   return '<div class="bbp-spray">'
     +  '<div class="bbp-section-lbl">Spray Direction (' + (isLHB ? 'LHB' : 'RHB') + ')</div>'
-    +  '<svg class="bbp-spray-svg" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid meet">'
-    +    cone(-45, -15, isLHB ? oppoCol : pullCol, 0.42)
-    +    cone(-15,  15, centerCol, 0.42)
-    +    cone( 15,  45, isLHB ? pullCol : oppoCol, 0.42)
-    +    '<text x="40" y="50" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
-    +    '<text x="40" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
-    +    '<text x="100" y="50" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
-    +    '<text x="100" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(ctrPct) + '</text>'
-    +    '<text x="160" y="50" class="bbp-spray-lbl" text-anchor="middle">' + rightLbl + '</text>'
-    +    '<text x="160" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(rightPct) + '</text>'
+    +  '<svg class="bbp-spray-svg" viewBox="0 0 240 170" preserveAspectRatio="xMidYMid meet">'
+    +    cone(-45, -15, isLHB ? oppoCol : pullCol, 0.32)
+    +    cone(-15,  15, centerCol, 0.32)
+    +    cone( 15,  45, isLHB ? pullCol : oppoCol, 0.32)
+    +    '<text x="' + lT.x.toFixed(1) + '" y="' + lT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">LF</text>'
+    +    '<text x="' + cT.x.toFixed(1) + '" y="' + cT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">CF</text>'
+    +    '<text x="' + rT.x.toFixed(1) + '" y="' + rT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">RF</text>'
+    +    '<text x="' + lP.x.toFixed(1) + '" y="' + (lP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
+    +    '<text x="' + lP.x.toFixed(1) + '" y="' + (lP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
+    +    '<text x="' + cP.x.toFixed(1) + '" y="' + (cP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
+    +    '<text x="' + cP.x.toFixed(1) + '" y="' + (cP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(ctrPct) + '</text>'
+    +    '<text x="' + rP.x.toFixed(1) + '" y="' + (rP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">' + rightLbl + '</text>'
+    +    '<text x="' + rP.x.toFixed(1) + '" y="' + (rP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(rightPct) + '</text>'
     +  '</svg>'
     + '</div>';
 }
@@ -569,18 +585,18 @@ function bbpQualityOfContact(agg, lgAgg, p) {
   // p: stats-API row with xba/xslg (already in player object)
   var pp = function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + 'pp'; };
   var rows = []
-    .concat(bbpQoCRow('Avg Exit Velo',  agg.avg_ev,         lgAgg.avg_ev,         1, fmtMph, function (d) { return '+' + d.toFixed(1); }))
-    .concat(bbpQoCRow('Max Exit Velo',  agg.max_ev,         lgAgg.max_ev,         1, fmtMph, function (d) { return '+' + d.toFixed(1); }))
+    .concat(bbpQoCRow('Avg Exit Velo',  agg.avg_ev,         lgAgg.avg_ev,         1, fmtMph, function (d) { return d.toFixed(1); }))
+    .concat(bbpQoCRow('Max Exit Velo',  agg.max_ev,         lgAgg.max_ev,         1, fmtMph, function (d) { return d.toFixed(1); }))
     .concat(bbpQoCRow('Barrel%',        agg.barrel_pct,     lgAgg.barrel_pct,     1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
     .concat(bbpQoCRow('Hard Hit%',      agg.hard_hit_pct,   lgAgg.hard_hit_pct,   1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
     .concat(bbpQoCRow('Sweet Spot%',    agg.sweet_spot_pct, lgAgg.sweet_spot_pct, 1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
-    .concat(bbpQoCRow('Avg LA',         agg.avg_la,         lgAgg.avg_la,         1, fmtDeg, function (d) { return '+' + d.toFixed(1); }))
+    .concat(bbpQoCRow('Avg LA',         agg.avg_la,         lgAgg.avg_la,         1, fmtDeg, function (d) { return d.toFixed(1); }))
     .concat(bbpQoCRow('xBA',            (p && p.xba),       (lgAgg && lgAgg.xba), 1, fmt3))
     .concat(bbpQoCRow('xSLG',           (p && p.xslg),      (lgAgg && lgAgg.xslg),1, fmt3));
   return '<div class="bbp-qoc">'
     + '<div class="bbp-section-lbl">Quality of Contact</div>'
     + '<table class="bbp-qoc-tbl"><thead><tr><th>Metric</th><th>Value</th><th>vs Avg</th></tr></thead><tbody>'
-    + rows + '</tbody></table>'
+    + rows.join('') + '</tbody></table>'
     + '</div>';
 }
 
@@ -706,14 +722,7 @@ function renderHitter(p, lg, levelLabel) {
     +         sl
     +       '</div>'
     +     '</div>'
-    +     '<div class="pc-bottom-tbl ' + (qualified ? '' : 'pc-sss') + '">'
-    +       '<div class="section-lbl">' + vsLbl + '</div>'
-    +       '<table class="vs-avg-tbl"><thead><tr>'
-    +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
-    +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
-    +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
-    +     '</div>'
-    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast expectedStatistics + per-event hit_data from MLB Stats API live feeds. AAA has full Statcast coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast expectedStatistics + per-event hit_data from MLB Stats API live feeds. Quality of Contact deltas vs. ' + escapeHtml(levelLabel) + '-level averages computed from qualified players in the loaded dataset. AAA has full Statcast coverage; FSL is partial.</div>'
     +   '</div>'
     + '</div>';
 }
