@@ -360,3 +360,180 @@
   color: var(--fg3);
 }
 .pc-empty-panel { background: rgba(0,0,0,.01); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MiLB cards — Spray Chart + Batted Ball Profile additions
+   ─────────────────────────────────────────────────────────────────────────────
+   Append to css/milb.css. Existing pc-* / chart-panel / cp-* / pd-* / gauge-*
+   styles continue to apply; this file only adds the new component classes:
+     .spray-chart-svg / .sc-arc / .sc-foul / .sc-wall / .sc-home / .sc-arc-lbl / .sc-legend / .sc-dot
+     .bbp-panel / .bbp-section-lbl / .bbp-loading
+     .bbp-dist / .bbp-dist-row / .bbp-dist-dot / .bbp-dist-lbl / .bbp-dist-bar / .bbp-dist-fill / .bbp-dist-pct
+     .bbp-spray / .bbp-spray-svg / .bbp-spray-lbl / .bbp-spray-pct
+     .bbp-qoc / .bbp-qoc-tbl / .bbp-qoc-lbl / .bbp-qoc-val / .bbp-qoc-diff
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Spray Chart ────────────────────────────────────────────────────────── */
+.spray-chart-svg {
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  display: block;
+}
+.sc-arc {
+  fill: none;
+  stroke: rgba(45, 36, 24, 0.18);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+.sc-foul {
+  fill: none;
+  stroke: rgba(45, 36, 24, 0.35);
+  stroke-width: 1.2;
+}
+.sc-wall {
+  fill: none;
+  stroke: rgba(45, 36, 24, 0.45);
+  stroke-width: 1.2;
+}
+.sc-home {
+  fill: rgba(45, 36, 24, 0.85);
+}
+.sc-arc-lbl {
+  fill: rgba(45, 36, 24, 0.55);
+  font-size: 9px;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.sc-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--fg2, #6b6b6b);
+  padding: 10px 4px 4px;
+  align-items: center;
+}
+.sc-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+/* ── Batted Ball Profile panel layout ───────────────────────────────────── */
+.bbp-panel { display: flex; flex-direction: column; gap: 14px; }
+.bbp-section-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg2, #6b6b6b);
+  margin-bottom: 6px;
+}
+.bbp-loading {
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--fg2, #6b6b6b);
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ── Distribution bars ──────────────────────────────────────────────────── */
+.bbp-dist { padding: 4px 0; }
+.bbp-dist-row {
+  display: grid;
+  grid-template-columns: 12px 80px 1fr 56px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.bbp-dist-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.bbp-dist-lbl { color: var(--fg, #2d2418); }
+.bbp-dist-bar {
+  display: block;
+  background: rgba(45, 36, 24, 0.08);
+  height: 14px;
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.bbp-dist-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 250ms ease-out;
+}
+.bbp-dist-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--fg, #2d2418);
+  font-size: 12px;
+}
+
+/* ── Spray Direction cone ───────────────────────────────────────────────── */
+.bbp-spray { padding: 4px 0; }
+.bbp-spray-svg {
+  width: 100%;
+  max-width: 260px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+.bbp-spray-lbl {
+  fill: rgba(45, 36, 24, 0.85);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.bbp-spray-pct {
+  fill: rgba(45, 36, 24, 0.95);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ── Quality of Contact table ───────────────────────────────────────────── */
+.bbp-qoc { padding: 4px 0; }
+.bbp-qoc-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.bbp-qoc-tbl thead th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg2, #6b6b6b);
+  border-bottom: 1px solid rgba(45, 36, 24, 0.12);
+  padding: 5px 6px;
+}
+.bbp-qoc-tbl tbody td {
+  padding: 6px 6px;
+  border-bottom: 1px solid rgba(45, 36, 24, 0.06);
+}
+.bbp-qoc-lbl { color: var(--fg, #2d2418); }
+.bbp-qoc-val { font-variant-numeric: tabular-nums; font-weight: 600; }
+.bbp-qoc-diff {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  width: 64px;
+}
+.bbp-qoc-diff.diff-good {
+  color: #047857;
+  background: rgba(4, 120, 87, 0.06);
+}
+.bbp-qoc-diff.diff-bad {
+  color: #B91C1C;
+  background: rgba(185, 28, 28, 0.06);
+}

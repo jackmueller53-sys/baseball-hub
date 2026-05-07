@@ -1,0 +1,466 @@
+#!/usr/bin/env node
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Baseball Hub — MiLB Live-Feed Statcast Extractor
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Walks every completed AAA (sportId=11) + FSL (sportId=14, leagueId=123) game
+ * for the season, extracts:
+ *   1. Per-event Statcast hit_data (BBE) → per-batter shards
+ *   2. Per-pitch playEvent.details.type + pitchData → per-pitcher arsenals
+ *
+ * Why both come from the same live-feed walk:
+ *   - The MLB Stats API /stats?stats=pitchArsenal endpoint is deprecated
+ *     (returns 0 splits for ALL leagues including MLB itself, probed 2026-05-04).
+ *   - Per-game live feeds DO contain per-pitch data with pitch_type and
+ *     start_speed, so we aggregate them in-flight.
+ *
+ * Output:
+ *   data/milb/<level>/bbe/<player_id>.json       — hitter BBE shards
+ *     {
+ *       player_id, name, last_updated,
+ *       events: [{ d (date), x, y, ev, la, bb, dist, e (event), s (stand) }, ...],
+ *       agg: { n, avg_ev, max_ev, hard_hit_pct, barrel_pct, sweet_spot_pct,
+ *              avg_la, gb_pct, ld_pct, fb_pct, pu_pct,
+ *              pull_pct, center_pct, oppo_pct }
+ *     }
+ *
+ *   data/milb/<level>/arsenal/<player_id>.json   — pitcher pitch arsenal shards
+ *     {
+ *       player_id, name, last_updated,
+ *       arsenal: [{ code, type, n, pct, velo, whiff_pct, put_away_pct }, ...]
+ *     }
+ *
+ *   data/milb/<level>/bbe-manifest.json     — list of player_ids with BBE data
+ *   data/milb/<level>/arsenal-manifest.json — list of player_ids with arsenal data
+ *
+ * Strategy:
+ *   - Stats API /schedule returns gamePk list per (sportId, season, dateRange)
+ *   - Stats API /game/<gamePk>/feed/live returns plays with hit_data + pitch data
+ *   - Concurrency-limited (8 parallel) to balance throughput vs. rate limits
+ *   - Idempotent: re-runs cleanly, all output deterministic
+ *
+ * Pitch-arsenal aggregation rules:
+ *   pct           = pitches of this type / total pitches × 100
+ *   velo          = mean(pitchData.startSpeed) for this type
+ *   whiff_pct     = swinging strikes of this type / swings of this type × 100
+ *   put_away_pct  = strikeouts ending on this type / 2-strike pitches of this type × 100
+ *
+ * Usage: node scripts/fetch-milb-bbe.js
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SEASON = 2026;
+const ROOT_DATA_DIR = path.join(__dirname, '..', 'data');
+const MILB_DIR = path.join(ROOT_DATA_DIR, 'milb');
+const TIMEOUT = 30000;
+const CONCURRENCY = 8;
+const MIN_PITCHES_FOR_ARSENAL = 5;   // suppress noise for pitchers with <5 pitches
+
+const LEVELS = [
+  { key: 'aaa', sportId: 11, leagueId: null, label: 'AAA' },
+  { key: 'fsl', sportId: 14, leagueId: 123,  label: 'FSL' }
+];
+
+const HARD_HIT_MPH = 95.0;
+const SWEET_LA_LO = 8;
+const SWEET_LA_HI = 32;
+function isBarrel(ev, la) {
+  if (ev == null || la == null) return false;
+  if (ev < 98) return false;
+  const extra = Math.max(0, Math.floor(ev - 98));
+  const lo = Math.max(8,  26 - extra);
+  const hi = Math.min(50, 30 + extra);
+  return la >= lo && la <= hi;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HTTP FETCH
+// ═══════════════════════════════════════════════════════════════════════════
+
+function fetchURL(url, maxRedirects) {
+  if (maxRedirects == null) maxRedirects = 5;
+  return new Promise((resolve, reject) => {
+    if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
+    const req = https.get(url, {
+      timeout: TIMEOUT,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) BaseballHub/1.0',
+        'Accept': 'application/json'
+      }
+    }, (res) => {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+        let redirectUrl = res.headers.location;
+        if (redirectUrl.startsWith('/')) {
+          const parsed = new URL(url);
+          redirectUrl = parsed.origin + redirectUrl;
+        }
+        return resolve(fetchURL(redirectUrl, maxRedirects - 1));
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return reject(new Error('HTTP ' + res.statusCode + ' from ' + url.slice(0, 120)));
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      res.on('error', reject);
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout: ' + url.slice(0, 120))); });
+    req.on('error', reject);
+  });
+}
+
+async function fetchJSON(url) {
+  const text = await fetchURL(url);
+  return JSON.parse(text);
+}
+
+async function pmap(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      try { out[i] = await fn(items[i], i); }
+      catch (e) { out[i] = null; console.warn('  pmap fail [' + i + ']: ' + e.message); }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+async function listCompletedGames(level) {
+  const url = 'https://statsapi.mlb.com/api/v1/schedule'
+    + '?sportId=' + level.sportId
+    + '&season=' + SEASON
+    + '&gameType=R'
+    + (level.leagueId ? '&leagueId=' + level.leagueId : '');
+  const json = await fetchJSON(url);
+  const dates = json.dates || [];
+  const out = [];
+  for (const d of dates) {
+    for (const g of (d.games || [])) {
+      const codedState = g.status && g.status.codedGameState;
+      if (codedState === 'F' || codedState === 'D') {
+        out.push({ gamePk: g.gamePk, gameDate: g.gameDate });
+      }
+    }
+  }
+  return out;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIVE FEED → BBE rows + per-pitch rows
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Returns { bbe: [...], pitches: [...] }. We keep these flat per-game; the
+// processLevel step groups them by player.
+
+async function fetchGameData(gamePk, gameDate) {
+  const url = 'https://statsapi.mlb.com/api/v1.1/game/' + gamePk + '/feed/live';
+  const json = await fetchJSON(url);
+  const allPlays = (json.liveData && json.liveData.plays && json.liveData.plays.allPlays) || [];
+  const bbe = [];
+  const pitches = [];
+  for (const play of allPlays) {
+    const matchup = play.matchup || {};
+    const batter = matchup.batter || {};
+    const pitcher = matchup.pitcher || {};
+    const stand = matchup.batSide && matchup.batSide.code;
+    const event = play.result && play.result.event;
+    const eventType = play.result && play.result.eventType;
+    const isStrikeout = /strikeout/i.test(eventType || '');
+    const playEvents = play.playEvents || [];
+    // Track 2-strike count for put-away% (a 2-strike pitch that ends the AB
+    // as a strikeout counts toward put-away on the pitch type that delivered
+    // the K).
+    let firstHitDataSeen = false;
+    for (let pi = 0; pi < playEvents.length; pi++) {
+      const pe = playEvents[pi];
+      // ── BBE (only the play-ending hitData) ──
+      if (pe.hitData && !firstHitDataSeen) {
+        firstHitDataSeen = true;
+        const c = pe.hitData.coordinates || {};
+        bbe.push({
+          batter_id: batter.id,
+          batter_name: batter.fullName || '',
+          d: gameDate.slice(0, 10),
+          x: c.coordX,
+          y: c.coordY,
+          ev: pe.hitData.launchSpeed,
+          la: pe.hitData.launchAngle,
+          bb: pe.hitData.trajectory,
+          dist: pe.hitData.totalDistance,
+          e: event,
+          stand: stand
+        });
+      }
+      // ── Per-pitch (only events with pitch_type + pitch_data) ──
+      const t = pe.details && pe.details.type;
+      const pd = pe.pitchData;
+      if (!t || !t.code || !pd) continue;
+      // Pre-pitch count snapshot (count BEFORE this pitch)
+      const preBalls = pe.count && pe.count.balls;
+      const preStrikes = pe.count && pe.count.strikes;
+      // Determine swing / whiff / in-play
+      const callCode = pe.details && pe.details.code;
+      // Stats API codes:
+      //   'B' = ball, 'S' = called strike, 'C' = called strike (alt),
+      //   'F' = foul, 'L' = bunt foul,
+      //   '*' = swinging miss / pitchout / etc.
+      //   'X' = in play, 'D' = in play (no out), 'E' = in play (run),
+      //   'M' = missed bunt, 'W' = swinging strike (alt), 'T' = foul tip,
+      //   'I' = intentional ball, 'P' = pitchout, 'V' = called strike?
+      // Heuristic: check details.isInPlay / isStrike / description.
+      const desc = (pe.details && (pe.details.description || '')).toLowerCase();
+      const isInPlay = !!(pe.details && pe.details.isInPlay) || /in play/i.test(desc);
+      const isFoul   = /foul/i.test(desc) && !/foul tip/i.test(desc);
+      const isWhiff  = /swinging strike|missed bunt|foul tip/i.test(desc);
+      const isCalled = /called strike/i.test(desc);
+      const isBall   = /^ball|hit by pitch|pitchout|intent ball/i.test(desc);
+      const isSwing  = isInPlay || isFoul || isWhiff;
+      // Last pitch of an AB? Only the final pitch should count for put-away
+      const isLastPitchOfPA = (pi === playEvents.length - 1) || playEvents.slice(pi + 1).every(p2 => !p2.details || !p2.details.type);
+      pitches.push({
+        pitcher_id: pitcher.id,
+        pitcher_name: pitcher.fullName || '',
+        d: gameDate.slice(0, 10),
+        code: t.code,
+        type: t.description || t.code,
+        velo: pd.startSpeed,
+        is_swing: isSwing,
+        is_whiff: isWhiff,
+        is_in_play: isInPlay,
+        // 2-strike before this pitch
+        was_two_strike: (preStrikes != null && preStrikes >= 2),
+        // PA-ending strikeout? (putaway eligibility)
+        is_putaway: !!(isStrikeout && isLastPitchOfPA && (preStrikes != null && preStrikes >= 2))
+      });
+    }
+  }
+  return { bbe, pitches };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HITTER BBE AGGREGATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function classifySpray(x, stand) {
+  if (x == null) return null;
+  const dx = x - 125;
+  const absDx = Math.abs(dx);
+  if (absDx < 30) return 'center';
+  if (stand === 'L') return dx > 0 ? 'pull' : 'oppo';
+  return dx < 0 ? 'pull' : 'oppo';
+}
+
+function aggregateForBatter(events) {
+  if (!events.length) return { n: 0 };
+  const evs = events.filter(e => e.ev != null && !isNaN(e.ev)).map(e => e.ev);
+  const las = events.filter(e => e.la != null && !isNaN(e.la)).map(e => e.la);
+  const sum = a => a.reduce((s, v) => s + v, 0);
+  const mean = a => a.length ? sum(a) / a.length : null;
+  const max = a => a.length ? Math.max.apply(null, a) : null;
+  const pct = (n, d) => d ? +(100 * n / d).toFixed(1) : null;
+
+  const n = events.length;
+  const hardHit = evs.filter(v => v >= HARD_HIT_MPH).length;
+  const sweetSpot = events.filter(e => e.la != null && e.la >= SWEET_LA_LO && e.la <= SWEET_LA_HI).length;
+  const barrels = events.filter(e => isBarrel(e.ev, e.la)).length;
+
+  const bbCounts = { ground_ball: 0, line_drive: 0, fly_ball: 0, popup: 0 };
+  for (const e of events) if (e.bb && bbCounts.hasOwnProperty(e.bb)) bbCounts[e.bb]++;
+  const bbTotal = bbCounts.ground_ball + bbCounts.line_drive + bbCounts.fly_ball + bbCounts.popup;
+
+  const sprayCounts = { pull: 0, center: 0, oppo: 0 };
+  for (const e of events) {
+    const s = classifySpray(e.x, e.s || e.stand);
+    if (s) sprayCounts[s]++;
+  }
+  const sprayTotal = sprayCounts.pull + sprayCounts.center + sprayCounts.oppo;
+
+  return {
+    n,
+    avg_ev: mean(evs) != null ? +mean(evs).toFixed(1) : null,
+    max_ev: max(evs) != null ? +max(evs).toFixed(1) : null,
+    hard_hit_pct: pct(hardHit, evs.length),
+    sweet_spot_pct: pct(sweetSpot, las.length),
+    barrel_pct: pct(barrels, n),
+    avg_la: mean(las) != null ? +mean(las).toFixed(1) : null,
+    gb_pct: pct(bbCounts.ground_ball, bbTotal),
+    ld_pct: pct(bbCounts.line_drive,  bbTotal),
+    fb_pct: pct(bbCounts.fly_ball,    bbTotal),
+    pu_pct: pct(bbCounts.popup,       bbTotal),
+    pull_pct:   pct(sprayCounts.pull,   sprayTotal),
+    center_pct: pct(sprayCounts.center, sprayTotal),
+    oppo_pct:   pct(sprayCounts.oppo,   sprayTotal)
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PITCHER ARSENAL AGGREGATE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function aggregateArsenal(pitches) {
+  if (!pitches.length) return null;
+  const total = pitches.length;
+  // Group by pitch code
+  const byCode = {};
+  for (const p of pitches) {
+    if (!p.code) continue;
+    if (!byCode[p.code]) {
+      byCode[p.code] = {
+        code: p.code, type: p.type || p.code,
+        n: 0, sumVelo: 0, nVelo: 0,
+        swings: 0, whiffs: 0, twoStrike: 0, putaway: 0
+      };
+    }
+    const r = byCode[p.code];
+    r.n++;
+    if (p.velo != null && !isNaN(p.velo)) { r.sumVelo += p.velo; r.nVelo++; }
+    if (p.is_swing) r.swings++;
+    if (p.is_whiff) r.whiffs++;
+    if (p.was_two_strike) r.twoStrike++;
+    if (p.is_putaway) r.putaway++;
+  }
+  const arsenal = Object.values(byCode)
+    .filter(r => r.n >= 1)
+    .map(r => ({
+      code: r.code,
+      type: r.type,
+      n: r.n,
+      pct:  +(100 * r.n / total).toFixed(1),
+      velo: r.nVelo ? +(r.sumVelo / r.nVelo).toFixed(1) : null,
+      whiff_pct:    r.swings    ? +(100 * r.whiffs  / r.swings).toFixed(1)    : null,
+      put_away_pct: r.twoStrike ? +(100 * r.putaway / r.twoStrike).toFixed(1) : null
+    }))
+    .sort((a, b) => b.pct - a.pct);
+  return arsenal;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function processLevel(level) {
+  console.log('\n══ ' + level.label + ' ══');
+  const t0 = Date.now();
+  console.log('  Listing completed games...');
+  const games = await listCompletedGames(level);
+  console.log('  ' + games.length + ' completed games');
+
+  console.log('  Fetching live feeds (' + CONCURRENCY + 'x parallel)...');
+  const fetched = await pmap(games, CONCURRENCY, async (g) => {
+    return await fetchGameData(g.gamePk, g.gameDate);
+  });
+  const allBBE = [];
+  const allPitches = [];
+  for (const r of fetched) {
+    if (!r) continue;
+    allBBE.push.apply(allBBE, r.bbe);
+    allPitches.push.apply(allPitches, r.pitches);
+  }
+  console.log('  ' + allBBE.length + ' batted-ball events, ' + allPitches.length + ' pitches extracted');
+
+  // ── Group BBE by batter_id ──
+  const byBatter = {};
+  for (const e of allBBE) {
+    if (!e.batter_id) continue;
+    if (!byBatter[e.batter_id]) byBatter[e.batter_id] = { name: e.batter_name, events: [] };
+    if (!byBatter[e.batter_id].name && e.batter_name) byBatter[e.batter_id].name = e.batter_name;
+    byBatter[e.batter_id].events.push({
+      d: e.d, x: e.x, y: e.y, ev: e.ev, la: e.la, bb: e.bb, dist: e.dist, e: e.e, s: e.stand
+    });
+  }
+  // Write BBE shards
+  const bbeDir = path.join(MILB_DIR, level.key, 'bbe');
+  if (!fs.existsSync(bbeDir)) fs.mkdirSync(bbeDir, { recursive: true });
+  let bbeWritten = 0;
+  for (const [pid, rec] of Object.entries(byBatter)) {
+    const data = {
+      player_id: parseInt(pid, 10),
+      name: rec.name,
+      last_updated: new Date().toISOString(),
+      agg: aggregateForBatter(rec.events),
+      events: rec.events
+    };
+    fs.writeFileSync(path.join(bbeDir, pid + '.json'), JSON.stringify(data));
+    bbeWritten++;
+  }
+  fs.writeFileSync(
+    path.join(MILB_DIR, level.key, 'bbe-manifest.json'),
+    JSON.stringify({
+      last_updated: new Date().toISOString(),
+      season: SEASON,
+      level: level.label,
+      games_processed: games.length,
+      events_total: allBBE.length,
+      players: Object.keys(byBatter).map(pid => parseInt(pid, 10)).sort((a, b) => a - b)
+    })
+  );
+
+  // ── Group pitches by pitcher_id, build arsenals ──
+  const byPitcher = {};
+  for (const p of allPitches) {
+    if (!p.pitcher_id) continue;
+    if (!byPitcher[p.pitcher_id]) byPitcher[p.pitcher_id] = { name: p.pitcher_name, pitches: [] };
+    if (!byPitcher[p.pitcher_id].name && p.pitcher_name) byPitcher[p.pitcher_id].name = p.pitcher_name;
+    byPitcher[p.pitcher_id].pitches.push(p);
+  }
+  // Write arsenal shards
+  const arsenalDir = path.join(MILB_DIR, level.key, 'arsenal');
+  if (!fs.existsSync(arsenalDir)) fs.mkdirSync(arsenalDir, { recursive: true });
+  let arsenalWritten = 0;
+  const arsenalPlayers = [];
+  for (const [pid, rec] of Object.entries(byPitcher)) {
+    if (rec.pitches.length < MIN_PITCHES_FOR_ARSENAL) continue;
+    const arsenal = aggregateArsenal(rec.pitches);
+    if (!arsenal || !arsenal.length) continue;
+    const data = {
+      player_id: parseInt(pid, 10),
+      name: rec.name,
+      last_updated: new Date().toISOString(),
+      total_pitches: rec.pitches.length,
+      arsenal: arsenal
+    };
+    fs.writeFileSync(path.join(arsenalDir, pid + '.json'), JSON.stringify(data));
+    arsenalWritten++;
+    arsenalPlayers.push(parseInt(pid, 10));
+  }
+  fs.writeFileSync(
+    path.join(MILB_DIR, level.key, 'arsenal-manifest.json'),
+    JSON.stringify({
+      last_updated: new Date().toISOString(),
+      season: SEASON,
+      level: level.label,
+      games_processed: games.length,
+      pitches_total: allPitches.length,
+      players: arsenalPlayers.sort((a, b) => a - b)
+    })
+  );
+
+  const dt = ((Date.now() - t0) / 1000).toFixed(1);
+  console.log('  ' + bbeWritten + ' BBE shards, ' + arsenalWritten + ' arsenal shards (' + dt + 's)');
+}
+
+(async () => {
+  if (!fs.existsSync(MILB_DIR)) fs.mkdirSync(MILB_DIR, { recursive: true });
+  for (const level of LEVELS) {
+    try {
+      await processLevel(level);
+    } catch (e) {
+      console.error('  ' + level.label + ' failed: ' + e.message);
+    }
+  }
+  console.log('\n✓ Done.');
+})();
