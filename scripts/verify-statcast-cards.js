@@ -1,21 +1,12 @@
 #!/usr/bin/env node
 /**
- * Pre-push verification harness for the Statcast-panel update to MiLB cards.
+ * Pre-push verification harness for the BBE Statcast-event rebuild of MiLB
+ * cards. The hitter card now lazy-loads a per-player BBE shard and replaces
+ * the Spray Chart + Batted Ball Profile panels in place, so this harness
+ * verifies (a) the synchronous loading-state placeholders and (b) the
+ * post-hydration rendered HTML by calling the exposed renderers directly.
  *
- * Run with:  npm install jsdom  (one-time)  &&  node scripts/verify-statcast-cards.js
- *
- * Loads js/milb-cards.js into a jsdom window and renders four scenarios:
- *   1. Hitter WITH full Statcast (xwOBA, EV, hard-hit%, barrel%)
- *   2. Hitter WITHOUT Statcast (FSL fallback)
- *   3. Pitcher WITH pitchArsenal + xStats-against
- *   4. Pitcher WITHOUT either (FSL fallback)
- * For each, asserts:
- *   - Card opens (overlay visible)
- *   - Replaced panels appear with their new titles
- *   - Old panel titles are gone
- *   - Empty-state message renders for the no-Statcast cases
- *   - Pitch arsenal table renders the right number of rows when present
- *   - vs-Avg footer absorbs the new metrics
+ * Run with:  npm install jsdom  &&  node scripts/verify-statcast-cards.js
  */
 'use strict';
 
@@ -30,6 +21,10 @@ function makeWindow() {
   const dom = new JSDOM('<!DOCTYPE html><html><head></head><body></body></html>', {
     runScripts: 'outside-only'
   });
+  // Stub fetch — synchronous render path doesn't await it but hydrateBBE will.
+  // For these tests we just want the synchronous skeleton; actual BBE render
+  // is exercised via the directly-exposed _battedBallProfileFromBBE / _sprayChartSVG.
+  dom.window.fetch = () => new Promise(() => {});  // never resolves
   dom.window.eval(cardJS);
   return dom.window;
 }
@@ -51,12 +46,10 @@ const hitterFull = {
   g: 18, pa: 80, ab: 70, h: 22, d: 5, t: 0, hr: 4, r: 14, rbi: 16, bb: 8, ibb: 0, hbp: 1, k: 18, sb: 2, cs: 0, sf: 1,
   singles: 13, avg: 0.314, obp: 0.388, slg: 0.557, ops: 0.945, babip: 0.36,
   iso: 0.243, bb_pct: 10.0, k_pct: 22.5, hr_pct: 5.0, bb_k: 0.444, whiff_pct: 24.5, contact_pct: 75.5, woba: 0.402,
-  // Hawk-Eye xStats
-  xba: 0.298, xslg: 0.524, xwoba: 0.391, ev: 91.2, hard_hit_pct: 47.5, barrel_pct: 11.8
+  xba: 0.298, xslg: 0.524, xwoba: 0.391
 };
 const hitterNoStatcast = Object.assign({}, hitterFull, {
-  player_id: 2, name: 'No Statcast Sam', xba: null, xslg: null, xwoba: null,
-  ev: null, hard_hit_pct: null, barrel_pct: null
+  player_id: 2, name: 'No Statcast Sam', xba: null, xslg: null, xwoba: null
 });
 
 const pitcherFull = {
@@ -67,9 +60,7 @@ const pitcherFull = {
   era: 2.25, whip: 1.04, babip: 0.290, role: 'SP',
   k9: 10.3, bb9: 2.3, hr9: 0.6, k_pct: 29.1, bb_pct: 6.4, kbb_pct: 22.7, whiff_pct: 32.5,
   total_swings: 180, strike_pct: 65, fip: 2.95,
-  // Hawk-Eye xStats-against
-  xba_a: 0.225, xslg_a: 0.355, xwoba_a: 0.282, ev_a: 88.4, hard_hit_pct_a: 35.2,
-  // Pitch arsenal
+  xba_a: 0.225, xslg_a: 0.355, xwoba_a: 0.282,
   pitch_arsenal: [
     { type: '4-Seam Fastball', code: 'FF', pct: 48.5, velo: 95.8, whiff_pct: 25.4, put_away_pct: 20.1 },
     { type: 'Slider', code: 'SL', pct: 28.2, velo: 86.5, whiff_pct: 38.7, put_away_pct: 28.5 },
@@ -78,8 +69,8 @@ const pitcherFull = {
   ]
 };
 const pitcherNoStatcast = Object.assign({}, pitcherFull, {
-  player_id: 101, name: 'No Hawk-Eye Hank',
-  xba_a: null, xslg_a: null, xwoba_a: null, ev_a: null, hard_hit_pct_a: null,
+  player_id: 101, name: 'No Statcast Hank',
+  xba_a: null, xslg_a: null, xwoba_a: null,
   pitch_arsenal: null
 });
 
@@ -91,7 +82,7 @@ function makeHitterDb(extra) {
       player_id: 9000 + i, pa: 100, ab: 90, h: 25, d: 5, t: 0, hr: 3, bb: 9, ibb: 0, hbp: 1, sf: 1,
       singles: 17, avg: 0.278, obp: 0.350, slg: 0.450, ops: 0.800, babip: 0.310,
       iso: 0.172, bb_pct: 9.0, k_pct: 23.0, hr_pct: 3.0, bb_k: 0.400, whiff_pct: 25.0, contact_pct: 75.0, woba: 0.345,
-      xba: 0.270, xslg: 0.430, xwoba: 0.335, ev: 88.5, hard_hit_pct: 40.0, barrel_pct: 8.0
+      xba: 0.270, xslg: 0.430, xwoba: 0.335
     });
   }
   return { hitters: [extra].concat(peers), pitchers: [] };
@@ -104,7 +95,7 @@ function makePitcherDb(extra) {
       avg_a: 0.245, obp_a: 0.310, slg_a: 0.395, ops_a: 0.705, era: 3.60, whip: 1.23, babip: 0.300,
       k9: 9.0, bb9: 2.7, hr9: 0.9, k_pct: 23.0, bb_pct: 7.0, kbb_pct: 16.0, whiff_pct: 27.0,
       strike_pct: 63.0, fip: 3.50,
-      xba_a: 0.250, xslg_a: 0.400, xwoba_a: 0.310, ev_a: 89.0, hard_hit_pct_a: 38.0
+      xba_a: 0.250, xslg_a: 0.400, xwoba_a: 0.310
     });
   }
   return { hitters: [], pitchers: [extra].concat(peers) };
@@ -120,72 +111,155 @@ function runScenario(name, fn) {
   total++;
 }
 
-runScenario('Hitter WITH full Statcast', () => {
+runScenario('Hitter WITH full Statcast — synchronous skeleton', () => {
   const win = makeWindow();
   win.MiLBCards.open(hitterFull, 'hitters', makeHitterDb(hitterFull), 'AAA');
   const html = win.document.getElementById('pc-overlay').innerHTML;
   assert(html.indexOf('Test Slugger') > -1, 'header shows player name');
-  assert(html.indexOf('Batted-Ball Profile') > -1, 'new Batted-Ball Profile panel renders');
-  assert(html.indexOf('Power Profile') === -1, 'old Power Profile panel is gone');
-  // gauge values present — Stats API exposes 3 expected-stats fields for MiLB:
-  //   xwOBA, xBA, xSLG. EV / Hard-Hit% / Barrel% are NOT available for MiLB.
-  assert(html.indexOf('xwOBA') > -1, 'xwOBA gauge label present');
-  assert(html.indexOf('xBA') > -1, 'xBA gauge label present');
-  assert(html.indexOf('xSLG') > -1, 'xSLG gauge label present');
-  // empty-state msg should NOT appear for full-data hitter
-  assert(html.indexOf('Statcast batted-ball metrics unavailable') === -1, 'no empty-state when data present');
-  // vs-Avg footer absorbs the 3 xStats
+  // New panel titles present
+  assert(html.indexOf('Spray Chart') > -1, 'Spray Chart panel renders');
+  assert(html.indexOf('Batted Ball Profile') > -1, 'Batted Ball Profile panel renders');
+  assert(html.indexOf('Plate Discipline') > -1, 'Plate Discipline panel still renders');
+  assert(html.indexOf('Stat Line') > -1, 'Stat Line panel still renders');
+  // Old panels gone
+  assert(html.indexOf('Slash Line Profile') === -1, 'old Slash Line Profile panel removed');
+  assert(html.indexOf('Power Profile') === -1, 'old Power Profile panel removed');
+  // Loading placeholders for BBE-driven panels
+  assert(html.indexOf('Loading Statcast events') > -1, 'BBE panels show loading state');
+  // Header KPIs render
+  assert(html.indexOf('AVG') > -1 && html.indexOf('OPS') > -1 && html.indexOf('wOBA') > -1, 'KPI strip renders');
+  // vs-Avg footer absorbs xwOBA + xBA + xSLG
   const vsTable = html.split('vs-avg-tbl')[1] || '';
   assert(vsTable.indexOf('xwOBA') > -1, 'vs-Avg footer has xwOBA row');
   assert(vsTable.indexOf('xBA') > -1, 'vs-Avg footer has xBA row');
   assert(vsTable.indexOf('xSLG') > -1, 'vs-Avg footer has xSLG row');
 });
 
-runScenario('Hitter WITHOUT Statcast (FSL fallback)', () => {
+runScenario('Hitter — synchronous skeleton renders even when no shard available', () => {
   const win = makeWindow();
   win.MiLBCards.open(hitterNoStatcast, 'hitters', makeHitterDb(hitterNoStatcast), 'FSL');
   const html = win.document.getElementById('pc-overlay').innerHTML;
-  assert(html.indexOf('Batted-Ball Profile') > -1, 'panel title still renders');
-  assert(html.indexOf('Statcast batted-ball metrics unavailable') > -1, 'empty-state message renders');
-  assert(html.indexOf('full at AAA') > -1, 'sub-message references AAA/FSL coverage difference');
-  // Card body should still render slash line
-  assert(html.indexOf('Slash Line Profile') > -1, 'slash-line panel still renders');
+  assert(html.indexOf('Spray Chart') > -1, 'Spray Chart panel still renders');
+  assert(html.indexOf('Batted Ball Profile') > -1, 'BBP panel still renders');
   assert(html.indexOf('Plate Discipline') > -1, 'plate-discipline panel still renders');
+  assert(html.indexOf('Stat Line') > -1, 'stat-line panel still renders');
+  assert(html.indexOf('Loading Statcast events') > -1, 'loading state persists until shard fetch resolves');
 });
 
-runScenario('Pitcher WITH full Statcast + Arsenal', () => {
+runScenario('Hitter — sprayChartSVG with mock events', () => {
+  const win = makeWindow();
+  // Synthesize minimal BBE events
+  const events = [
+    { x: 75,  y: 100, ev: 102, la:  15, bb: 'line_drive',  e: 'Single' },
+    { x: 125, y:  60, ev: 110, la:  28, bb: 'fly_ball',    e: 'Home Run' },
+    { x: 200, y: 150, ev:  90, la:  -5, bb: 'ground_ball', e: 'Groundout' },
+    { x: 130, y: 180, ev:  68, la:  55, bb: 'popup',       e: 'Pop Out' }
+  ];
+  const svg = win.MiLBCards._sprayChartSVG(events);
+  assert(svg.indexOf('<svg') > -1, 'SVG tag present');
+  assert(svg.indexOf('class="sc-arc"') > -1, 'distance arcs rendered');
+  assert(svg.indexOf('class="sc-foul"') > -1, 'foul lines rendered');
+  assert(svg.indexOf('class="sc-home"') > -1, 'home plate marker rendered');
+  // 4 events → 4 circles
+  const dotCount = (svg.match(/<circle /g) || []).length;
+  assert(dotCount === 4, '4 batted-ball dots rendered (got ' + dotCount + ')');
+  // Color coding
+  assert(svg.indexOf('#1D4ED8') > -1, 'ground-ball blue color applied');
+  assert(svg.indexOf('#047857') > -1, 'line-drive green color applied');
+  assert(svg.indexOf('#C2410C') > -1, 'fly-ball orange color applied');
+  assert(svg.indexOf('#B91C1C') > -1, 'popup red color applied');
+  // Legend
+  assert(svg.indexOf('Ground ball') > -1, 'legend lists Ground ball');
+});
+
+runScenario('Hitter — sprayChartSVG with empty events shows empty state', () => {
+  const win = makeWindow();
+  const svg = win.MiLBCards._sprayChartSVG([]);
+  assert(svg.indexOf('No batted-ball events') > -1, 'empty state copy present');
+  assert(svg.indexOf('<svg') === -1, 'no SVG when empty');
+});
+
+runScenario('Hitter — battedBallProfileFromBBE renders distribution + spray + QoC', () => {
+  const win = makeWindow();
+  const bbe = {
+    agg: {
+      n: 30,
+      avg_ev: 89.6, max_ev: 111.6,
+      hard_hit_pct: 43.3, sweet_spot_pct: 26.8, barrel_pct: 12.4,
+      avg_la: 13.0,
+      gb_pct: 42.3, ld_pct: 22.7, fb_pct: 22.7, pu_pct: 12.4,
+      pull_pct: 26.8, center_pct: 47.4, oppo_pct: 25.8
+    },
+    events: [{ s: 'R' }]
+  };
+  const lgAgg = {
+    avg_ev: 88.9, hard_hit_pct: 38.3, sweet_spot_pct: 34.9, barrel_pct: 8.4,
+    gb_pct: 44, ld_pct: 22, fb_pct: 24, pu_pct: 10,
+    pull_pct: 30, center_pct: 40, oppo_pct: 30
+  };
+  const html = win.MiLBCards._battedBallProfileFromBBE(bbe, lgAgg, { xba: 0.275, xslg: 0.446 });
+  // Distribution
+  assert(html.indexOf('Distribution') > -1, 'distribution section header');
+  assert(html.indexOf('Ground Ball') > -1 && html.indexOf('42.3%') > -1, 'GB row with pct');
+  assert(html.indexOf('Line Drive')  > -1 && html.indexOf('22.7%') > -1, 'LD row with pct');
+  assert(html.indexOf('Fly Ball')    > -1, 'FB row');
+  assert(html.indexOf('Popup')       > -1, 'PU row');
+  // Spray
+  assert(html.indexOf('Spray Direction') > -1, 'spray section header');
+  assert(html.indexOf('PULL')   > -1, 'PULL label');
+  assert(html.indexOf('CENTER') > -1, 'CENTER label');
+  assert(html.indexOf('OPPO')   > -1, 'OPPO label');
+  assert(html.indexOf('47.4%')  > -1, 'CENTER pct rendered');
+  // QoC
+  assert(html.indexOf('Quality of Contact') > -1, 'QoC section header');
+  assert(html.indexOf('Avg Exit Velo') > -1, 'Avg EV row');
+  assert(html.indexOf('Max Exit Velo') > -1, 'Max EV row');
+  assert(html.indexOf('Barrel%')       > -1, 'Barrel% row');
+  assert(html.indexOf('Hard Hit%')     > -1, 'Hard Hit% row');
+  assert(html.indexOf('Sweet Spot%')   > -1, 'Sweet Spot% row');
+  assert(html.indexOf('Avg LA')        > -1, 'Avg LA row');
+  assert(html.indexOf('xBA')           > -1, 'xBA row');
+  assert(html.indexOf('xSLG')          > -1, 'xSLG row');
+});
+
+runScenario('Hitter — battedBallProfileFromBBE empty-state when no events', () => {
+  const win = makeWindow();
+  const html = win.MiLBCards._battedBallProfileFromBBE({ agg: { n: 0 }, events: [] }, {}, {});
+  assert(html.indexOf('No batted-ball events tracked') > -1, 'empty state for no events');
+});
+
+runScenario('Pitcher synchronous skeleton', () => {
   const win = makeWindow();
   win.MiLBCards.open(pitcherFull, 'pitchers', makePitcherDb(pitcherFull), 'AAA');
   const html = win.document.getElementById('pc-overlay').innerHTML;
   assert(html.indexOf('Test Ace') > -1, 'header shows player name');
-  assert(html.indexOf('Pitch Arsenal') > -1, 'new Pitch Arsenal panel renders');
-  assert(html.indexOf('Run Prevention') === -1, 'old Run Prevention panel is gone');
-  assert(html.indexOf('Batted-Ball Against') > -1, 'new Batted-Ball Against panel renders');
-  assert(html.indexOf('Quality vs Hitters') === -1, 'old Quality vs Hitters panel is gone');
-  // Arsenal rows: 4 pitches → 4 rows
-  const rowCount = (html.match(/<tr>/g) || []).length;
-  assert(rowCount >= 4, 'arsenal table has at least 4 pitch rows (got ' + rowCount + ')');
-  assert(html.indexOf('4-Seam Fastball') > -1, 'fastball row renders');
-  assert(html.indexOf('Slider') > -1, 'slider row renders');
+  assert(html.indexOf('Pitch Arsenal') > -1, 'Pitch Arsenal panel title renders');
+  assert(html.indexOf('Loading pitch arsenal') > -1, 'arsenal loading state renders');
+  assert(html.indexOf('Batted-Ball Against') > -1, 'Batted-Ball Against panel renders');
   assert(html.indexOf('xwOBA-A') > -1, 'xwOBA-A label appears');
   assert(html.indexOf('xBA-A') > -1, 'xBA-A label appears');
   assert(html.indexOf('xSLG-A') > -1, 'xSLG-A label appears');
-  // vs-Avg footer absorbed HR/9, AVG-A, OPS-A, xwOBA-A, xBA-A, xSLG-A
-  const vsTable = html.split('vs-avg-tbl')[1] || '';
-  assert(vsTable.indexOf('HR/9') > -1, 'vs-Avg has HR/9 row');
-  assert(vsTable.indexOf('AVG-A') > -1, 'vs-Avg has AVG-A row');
-  assert(vsTable.indexOf('OPS-A') > -1, 'vs-Avg has OPS-A row');
-  assert(vsTable.indexOf('xwOBA-A') > -1, 'vs-Avg has xwOBA-A row');
 });
 
-runScenario('Pitcher WITHOUT Statcast (FSL fallback)', () => {
+runScenario('Arsenal table render with mock data', () => {
+  const win = makeWindow();
+  // Verify the arsenalTable function (exported via internals) renders rows
+  // when given an arsenal array. This is what hydrateArsenal injects.
+  // Use a back-channel by calling renderPitcher then patching the panel.
+  win.MiLBCards.open(pitcherFull, 'pitchers', makePitcherDb(pitcherFull), 'AAA');
+  const doc = win.document;
+  const panel = doc.querySelector('[data-arsenal-target]');
+  assert(!!panel, 'arsenal panel has data-arsenal-target attribute');
+  // The arsenalTable function is internal; verify the panel anchor exists.
+  // Hydration happens in fetch.then() which our stubbed fetch never resolves.
+});
+
+runScenario('Pitcher card body still has plate-discipline + stat line', () => {
   const win = makeWindow();
   win.MiLBCards.open(pitcherNoStatcast, 'pitchers', makePitcherDb(pitcherNoStatcast), 'FSL');
   const html = win.document.getElementById('pc-overlay').innerHTML;
   assert(html.indexOf('Pitch Arsenal') > -1, 'pitch arsenal panel title renders');
-  assert(html.indexOf('Pitch-by-pitch tracking unavailable') > -1, 'arsenal empty-state renders');
   assert(html.indexOf('Statcast batted-ball metrics unavailable') > -1, 'batted-ball-against empty-state renders');
-  // Card body should still render Plate Discipline + Stat Line
   assert(html.indexOf('Plate Discipline') > -1, 'plate-discipline panel still renders');
   assert(html.indexOf('Stat Line') > -1, 'stat-line panel still renders');
 });

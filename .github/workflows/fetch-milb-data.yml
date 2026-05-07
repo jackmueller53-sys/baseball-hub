@@ -8,17 +8,22 @@ name: Fetch MiLB 2026 Data
 # (sportId=14, leagueId=123) from statsapi.mlb.com/api/v1/stats. Savant MiLB
 # scraping was removed — the Savant expected_statistics endpoint silently
 # ignores MiLB filters so the AAA probe was returning MLB data instead.
+#
+# As of the BBE rebuild a second fetch step walks every completed game's live
+# feed and extracts per-event Statcast hit_data into per-player shards under
+# data/milb/<level>/bbe/<player_id>.json. These shards back the Spray Chart
+# and Batted Ball Profile panels on player cards.
 
 on:
   schedule:
     # 8:30 AM UTC = 4:30 AM ET — after west coast MiLB games finish and
     # 30 min after the MLB fetch-data.yml cron at 8:00 UTC.
     - cron: '30 8 * * *'
-  workflow_dispatch: # Allow manual trigger from GitHub UI
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
 
 permissions:
-  contents: write # Needed to commit data files back to repo
-  actions: write  # Needed to dispatch deploy.yml after a data commit
+  contents: write     # Needed to commit data files back to repo
+  actions: write      # Needed to dispatch deploy.yml after a data commit
 
 jobs:
   fetch-milb:
@@ -37,6 +42,18 @@ jobs:
 
       - name: Fetch 2026 MiLB data (MLB Stats API — AAA + FSL)
         run: node scripts/fetch-milb-statsapi.js
+
+      - name: Fetch 2026 MiLB batted-ball events (per-player BBE shards)
+        # This step walks every completed AAA + FSL game's live feed and
+        # extracts per-event Statcast hit_data (launch speed, launch angle,
+        # spray coordinates, trajectory). Aggregated per-player into shards
+        # consumed by the Spray Chart + Batted Ball Profile card panels.
+        # Concurrency-limited to 8 parallel game fetches; expect ~2-5 min
+        # mid-season as the schedule fills out.
+        run: node scripts/fetch-milb-bbe.js
+        # Keep going if BBE fetch hits a transient API issue — the season
+        # stat fetcher (above) is the canonical source of leaderboard data.
+        continue-on-error: true
 
       - name: Check for data changes
         id: check
@@ -60,6 +77,9 @@ jobs:
 
           Fetched from MLB Stats API: AAA (sportId=11) + FSL (sportId=14, leagueId=123).
           season + seasonAdvanced splits; wOBA + FIP computed in-fetcher.
+          Per-event Statcast hit_data extracted from live feeds into BBE shards
+          (data/milb/<level>/bbe/<player_id>.json).
+
           Triggered by: ${{ github.event_name }}"
           git push
 

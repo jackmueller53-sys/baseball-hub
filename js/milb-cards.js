@@ -1,38 +1,38 @@
 /* ═════════════════════════════════════════════════════════════════════════════
-   BASEBALL HUB — MiLB PLAYER CARD DRAWER
+   BASEBALL HUB — MiLB PLAYER CARD DRAWER  (Statcast event-data rebuild)
    ─────────────────────────────────────────────────────────────────────────────
-   Renders the MiLB equivalent of the MLB stats-explorer player card. Same
-   .pc-* skeleton (re-uses styles.css), backed by MLB Stats API season +
-   seasonAdvanced + expectedStatistics + pitchArsenal groups.
+   MLB-parity card layout for AAA + FSL hitters. Panels mirror the MLB cards
+   that pull from Baseball Savant — but for MiLB the per-event Statcast data
+   comes from the MLB Stats API live-feed pipeline (scripts/fetch-milb-bbe.js)
+   because Savant's leaderboards silently swap MiLB filters for MLB data.
 
-     Hitter card panels:
-       • Slash Line Profile      (AVG / OBP / SLG / OPS / wOBA / BABIP)
-       • Plate Discipline         (BB%, K%, Whiff%, Contact% bars vs league)
-       • Batted-Ball Profile      (xwOBA / EV / Hard-Hit% / Barrel% gauges) — Hawk-Eye
-       • Stat Line table          (counting + speed)
+     Hitter card panels (2x2 grid):
+       • Spray Chart                — SVG, dots colored by bb_type, distance arcs (Statcast)
+       • Batted Ball Profile        — distribution bars + spray cone + quality-of-contact
+       • Plate Discipline           — BB% / K% / Whiff% / Contact% bars vs league (Stats API)
+       • Stat Line                  — counting/speed table (Stats API)
 
-     Pitcher card panels:
-       • Pitch Arsenal            (per-pitch usage / velo / whiff% / put-away%) — Hawk-Eye
-       • Plate Discipline         (K%, BB%, Whiff%, Strike% bars vs league)
-       • Stat Line table          (counting + workload)
-       • Batted-Ball Against      (xwOBA-A / xBA-A / Hard-Hit%-A / EV-A gauges) — Hawk-Eye
+     Pitcher card panels (unchanged from prior rebuild):
+       • Pitch Arsenal              — per-pitch usage / velo / whiff% / put-away%
+       • Plate Discipline           — K% / BB% / Whiff% / Strike% bars vs league
+       • Stat Line                  — counting + workload
+       • Batted-Ball Against        — xwOBA-A / xBA-A / xSLG-A gauges
 
-   League averages are computed live from the loaded dataset on each open
-   (see computeHitterLeagueAvgs / computePitcherLeagueAvgs). Below the
-   qualified-PA / qualified-IP thresholds the "vs league" comparison row and
-   gauge/bar comparison ticks gray out and a "Small Sample" chip appears in
-   the header.
-
-   Hawk-Eye coverage: every AAA park since 2023 (full); FSL is partial. When
-   a player has no xStats / pitchArsenal record, the relevant panel renders
-   with dashes and an inline "Statcast not available" notice — the rest of
-   the card continues to render normally.
+   Data flow:
+     - On open(player, mode, db, levelLabel) the synchronous render fires
+       immediately so the user sees the card frame instantly.
+     - For hitters the Spray Chart + Batted Ball Profile panels render a
+       loading state, then fetch ../data/milb/<level>/bbe/<player_id>.json
+       and re-render those two panels in place.
+     - If the BBE shard is missing (no events in any of the player's games —
+       common for FSL parks without Hawk-Eye) the panels show an empty state
+       and the rest of the card stays interactive.
 
    Public API (called by milb-explorer.js):
      window.MiLBCards.open(player, mode, db, levelLabel)
      window.MiLBCards.close()
 
-   Source: MLB Stats API (statsapi.mlb.com).
+   Source: MLB Stats API (statsapi.mlb.com), per-event hit_data from live feeds.
    ════════════════════════════════════════════════════════════════════════════ */
 (function () {
 'use strict';
@@ -42,44 +42,85 @@ var QUAL_PA = 10;   // hitters
 var QUAL_IP = 3;    // pitchers
 
 // ── Bar-chart / gauge reference scales (max for normalization) ──────────────
-// Tuned from the mock so AAA/FSL ranges read cleanly. Player rate is mapped
-// to 0-100% of bar width via value / SCALE.MAX (clamped). League-avg tick is
-// drawn at leagueAvg / SCALE.MAX.
 var SCALE = {
   // hitter PD bars
-  bb_pct_h:      { max: 30,   dir:  1 },   // BB% — higher better
-  k_pct_h:       { max: 30,   dir: -1 },   // K%  — lower better
-  whiff_pct_h:   { max: 60,   dir: -1 },   // Whiff% — lower better
-  contact_pct_h: { max: 100,  dir:  1 },   // Contact% — higher better
+  bb_pct_h:      { max: 30,   dir:  1 },
+  k_pct_h:       { max: 30,   dir: -1 },
+  whiff_pct_h:   { max: 60,   dir: -1 },
+  contact_pct_h: { max: 100,  dir:  1 },
   // pitcher PD bars
   k_pct_p:       { max: 40,   dir:  1 },
   bb_pct_p:      { max: 20,   dir: -1 },
-  whiff_pct_p:   { max: 60,   dir:  1 },   // higher = more swing-and-miss = better
+  whiff_pct_p:   { max: 60,   dir:  1 },
   strike_pct_p:  { max: 80,   dir:  1 },
-  // hitter batted-ball gauges (Statcast / expectedStatistics)
-  // Note: MLB Stats API only exposes xBA / xSLG / xwOBA for MiLB (no EV /
-  // Hard-Hit% / Barrel% — those require Savant which silently swaps to MLB
-  // when MiLB filters are passed). We render only what the API provides.
-  xwoba:         { max: 0.50, dir:  1 },   // xwOBA — higher better
-  xba:           { max: 0.40, dir:  1 },   // xBA — higher better
-  xslg:          { max: 0.65, dir:  1 },   // xSLG — higher better
-  // pitcher batted-ball-against gauges (Statcast)
-  xwoba_a:       { max: 0.45, dir: -1 },   // xwOBA against — lower better
-  xba_a:         { max: 0.35, dir: -1 },   // xBA against — lower better
-  xslg_a:        { max: 0.60, dir: -1 }    // xSLG against — lower better
+  // hitter batted-ball gauges (Statcast) — fallback if no BBE shard
+  xwoba:         { max: 0.50, dir:  1 },
+  xba:           { max: 0.40, dir:  1 },
+  xslg:          { max: 0.65, dir:  1 },
+  // pitcher batted-ball-against gauges
+  xwoba_a:       { max: 0.45, dir: -1 },
+  xba_a:         { max: 0.35, dir: -1 },
+  xslg_a:        { max: 0.60, dir: -1 }
 };
+
+// ── BBE shard path resolver ─────────────────────────────────────────────────
+// MiLB pages live at /pages/milb-aaa.html and /pages/milb-fsl.html, so the
+// shard lives at ../data/milb/<level>/bbe/<player_id>.json. Level comes from
+// the levelLabel passed to open() — case-insensitive.
+function bbeShardPath(levelLabel, playerId) {
+  var lvl = String(levelLabel || '').toLowerCase().trim();
+  if (lvl !== 'aaa' && lvl !== 'fsl') return null;
+  return '../data/milb/' + lvl + '/bbe/' + playerId + '.json';
+}
+
+// In-memory cache so re-opening a card doesn't re-fetch.
+var _bbeCache = {};
+
+function fetchBBE(levelLabel, playerId) {
+  var key = (levelLabel || '') + ':' + playerId;
+  if (_bbeCache[key] !== undefined) return Promise.resolve(_bbeCache[key]);
+  var url = bbeShardPath(levelLabel, playerId);
+  if (!url) { _bbeCache[key] = null; return Promise.resolve(null); }
+  return fetch(url, { cache: 'default' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; })
+    .then(function (data) { _bbeCache[key] = data; return data; });
+}
+
+// ── Pitcher arsenal shard (lazy-loaded from data/milb/<level>/arsenal/<pid>.json)
+//    Backed by per-pitch live-feed extraction in scripts/fetch-milb-bbe.js since
+//    the MLB Stats API pitchArsenal endpoint is deprecated (returns 0 splits
+//    for ALL leagues including MLB itself, probed 2026-05-04).
+function arsenalShardPath(levelLabel, playerId) {
+  var lvl = String(levelLabel || '').toLowerCase().trim();
+  if (lvl !== 'aaa' && lvl !== 'fsl') return null;
+  return '../data/milb/' + lvl + '/arsenal/' + playerId + '.json';
+}
+var _arsenalCache = {};
+function fetchArsenal(levelLabel, playerId) {
+  var key = (levelLabel || '') + ':' + playerId;
+  if (_arsenalCache[key] !== undefined) return Promise.resolve(_arsenalCache[key]);
+  var url = arsenalShardPath(levelLabel, playerId);
+  if (!url) { _arsenalCache[key] = null; return Promise.resolve(null); }
+  return fetch(url, { cache: 'default' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; })
+    .then(function (data) { _arsenalCache[key] = data; return data; });
+}
 
 // ── Format helpers ──────────────────────────────────────────────────────────
 function fmt3(v) {
   if (v == null || isNaN(v)) return '--';
   var s = v.toFixed(3);
-  // Drop leading zero for slash-line style: 0.366 -> .366 ; -0.5 stays -0.500
   return v >= 0 && v < 1 ? s.replace(/^0/, '') : s;
 }
 function fmt2(v)   { return (v == null || isNaN(v)) ? '--' : v.toFixed(2); }
+function fmt1(v)   { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); }
 function fmtPct(v, dp) { return (v == null || isNaN(v)) ? '--' : v.toFixed(dp == null ? 1 : dp) + '%'; }
 function fmtInt(v) { return (v == null || isNaN(v)) ? '--' : String(Math.round(v)); }
 function fmtIP(v)  { return (v == null || isNaN(v)) ? '--' : v.toFixed(1); }
+function fmtMph(v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1) + ' mph'; }
+function fmtDeg(v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1) + '°'; }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
 function escapeHtml(s) {
@@ -101,11 +142,7 @@ function teamAbbrev(p) {
   return p.team.split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 4).toUpperCase();
 }
 
-// ── League averages (live from the loaded DB) ───────────────────────────────
-// Uses an aggregation-where-honest, mean-where-fine mix:
-//   AVG/OBP/SLG/ERA/WHIP/HR9/K9/BB9 → re-aggregated from raw counting stats
-//                                      restricted to qualified players
-//   wOBA / FIP / rate-stats          → simple mean of qualified player values
+// ── League averages ─────────────────────────────────────────────────────────
 function computeHitterLeagueAvgs(rows) {
   var qual = (rows || []).filter(function (r) { return (r.pa || 0) >= QUAL_PA; });
   if (!qual.length) return { qualified: false, n: 0 };
@@ -133,10 +170,7 @@ function computeHitterLeagueAvgs(rows) {
     whiff_pct: mean('whiff_pct'),
     contact_pct: mean('contact_pct'),
     bb_k: mean('bb_k'),
-    hr_per_pa: PA ? (HR / PA) * 100 : null,  // pct, comparable to hr_pct mean
-    // Batted-ball / Statcast averages — the 3 expected-stats fields the MLB
-    // Stats API exposes for MiLB. Falls to null if all xStats are null, which
-    // causes the gauge tick + delta to suppress automatically.
+    hr_per_pa: PA ? (HR / PA) * 100 : null,
     xba:   mean('xba'),
     xslg:  mean('xslg'),
     xwoba: mean('xwoba')
@@ -171,26 +205,60 @@ function computePitcherLeagueAvgs(rows) {
     slg_a: mean('slg_a'),
     ops_a: mean('ops_a'),
     babip: mean('babip'),
-    // Batted-ball-against / Statcast averages — 3 expected-stats fields
-    // available from MLB Stats API for MiLB pitchers.
     xba_a:   mean('xba_a'),
     xslg_a:  mean('xslg_a'),
     xwoba_a: mean('xwoba_a')
   };
 }
 
-// ── PD bar — width = playerVal/max ; tick = leagueAvg/max ; color reflects dir
-// dir = 1: higher better (green if player > avg)
-// dir = -1: lower better (green if player < avg)
+// ── BBE league averages (per-level, computed lazily on first need) ──────────
+// Stored on db._bbeAvg by level so cards can compare a player's QoC metrics
+// against the level average. Compute on demand from the BBE manifest, not
+// from individual shards (too slow).
+//
+// Since we can't fetch all shards, we expose a helper that records each
+// player's agg as it's loaded and runs an online mean.
+var _bbeAggRunning = {};  // level -> { n, sum_avg_ev, ..., agg: {avg_ev_avg, ...} }
+function _ensureBbeRunning(levelKey) {
+  if (!_bbeAggRunning[levelKey]) {
+    _bbeAggRunning[levelKey] = {
+      n: 0, ids: {},
+      sum: { avg_ev:0, hard_hit_pct:0, sweet_spot_pct:0, barrel_pct:0,
+             gb_pct:0, ld_pct:0, fb_pct:0, pu_pct:0,
+             pull_pct:0, center_pct:0, oppo_pct:0 },
+      cnt: { avg_ev:0, hard_hit_pct:0, sweet_spot_pct:0, barrel_pct:0,
+             gb_pct:0, ld_pct:0, fb_pct:0, pu_pct:0,
+             pull_pct:0, center_pct:0, oppo_pct:0 }
+    };
+  }
+  return _bbeAggRunning[levelKey];
+}
+function _recordBbeAgg(levelKey, pid, agg) {
+  if (!agg) return;
+  var rec = _ensureBbeRunning(levelKey);
+  if (rec.ids[pid]) return;  // already counted
+  rec.ids[pid] = true;
+  rec.n++;
+  Object.keys(rec.sum).forEach(function (k) {
+    var v = agg[k];
+    if (v != null && !isNaN(v)) { rec.sum[k] += v; rec.cnt[k]++; }
+  });
+}
+function _bbeMean(levelKey, key) {
+  var rec = _bbeAggRunning[levelKey];
+  if (!rec || !rec.cnt[key]) return null;
+  return rec.sum[key] / rec.cnt[key];
+}
+
+// ── PD bar (unchanged) ──────────────────────────────────────────────────────
 function pdBar(label, value, leagueAvg, scaleKey, qualified) {
   var sc = SCALE[scaleKey] || { max: 100, dir: 1 };
-  var dir = sc.dir, max = sc.max;
+  var max = sc.max, dir = sc.dir;
   var fillW = value == null || isNaN(value) ? 0 : clamp((value / max) * 100, 0, 100);
   var avgL  = leagueAvg == null || isNaN(leagueAvg) ? 0 : clamp((leagueAvg / max) * 100, 0, 100);
   var better = (value != null && leagueAvg != null && !isNaN(value) && !isNaN(leagueAvg))
     ? ((dir === 1 ? value >= leagueAvg : value <= leagueAvg) ? 'good' : 'bad')
     : '';
-  // If sample isn't qualified, render bar in neutral blue and hide the avg tick
   var fillCls = qualified ? better : '';
   var tickHtml = qualified && leagueAvg != null && !isNaN(leagueAvg)
     ? '<div class="pd-bar-avg" style="left:' + avgL.toFixed(1) + '%"></div>'
@@ -205,7 +273,7 @@ function pdBar(label, value, leagueAvg, scaleKey, qualified) {
     + '</div>';
 }
 
-// ── Gauge — meter width = same normalization, foot = league avg + delta
+// ── Gauge (used for pitcher batted-ball-against) ────────────────────────────
 function gauge(label, value, leagueAvg, scaleKey, valFmt, qualified, deltaFmt) {
   var sc = SCALE[scaleKey] || { max: 1, dir: 1 };
   var dir = sc.dir, max = sc.max;
@@ -219,9 +287,7 @@ function gauge(label, value, leagueAvg, scaleKey, valFmt, qualified, deltaFmt) {
     var better = dir === 1 ? value >= leagueAvg : value <= leagueAvg;
     meterCls = better ? '' : 'bad';
     deltaCls = better ? 'vs' : 'vs bad';
-  } else {
-    meterCls = 'mid';
-  }
+  } else { meterCls = 'mid'; }
   var foot = '';
   if (leagueAvg != null && !isNaN(leagueAvg)) {
     var diff = (value != null && !isNaN(value)) ? (value - leagueAvg) : null;
@@ -241,9 +307,7 @@ function gauge(label, value, leagueAvg, scaleKey, valFmt, qualified, deltaFmt) {
     + '</div>';
 }
 
-// ── Pitch-arsenal table ─────────────────────────────────────────────────────
-// Renders one row per pitch type sorted by usage% descending. The usage cell
-// embeds an inline bar so the eye can read "this is his fastball" at a glance.
+// ── Pitch-arsenal table (pitcher card; unchanged) ───────────────────────────
 function arsenalRow(p) {
   var pct = p.pct;
   var pctW = (pct == null || isNaN(pct)) ? 0 : clamp(pct, 0, 100);
@@ -271,7 +335,6 @@ function arsenalTable(arsenal) {
     +    '</tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
-// Empty-state helper for the batted-ball gauge panels when xStats are absent.
 function bbAbsent(p, fields) {
   for (var i = 0; i < fields.length; i++) {
     var v = p[fields[i]];
@@ -284,7 +347,7 @@ function bbEmptyMsg() {
     + '<span class="ar-empty-sub">Coverage is full at AAA, partial at FSL.</span></div>';
 }
 
-// ── vs-Avg row helper — diff sign + good/bad colour ─────────────────────────
+// ── vs-Avg row helper (unchanged) ───────────────────────────────────────────
 function vsRow(label, value, leagueAvg, dir, valFmt, diffFmt) {
   if (value == null || isNaN(value) || leagueAvg == null || isNaN(leagueAvg)) {
     return [
@@ -309,28 +372,254 @@ function vsRow(label, value, leagueAvg, dir, valFmt, diffFmt) {
   ];
 }
 
-// ── Hitter card ─────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// SPRAY CHART (Statcast event-data SVG)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// Stats API hit-data coordinates: x in [0,250] (LF foul line at 0, RF foul
+// line at 250, dead-center ≈ 125), y in [0,250] (home plate near y=200,
+// dead-center deep at y≈25). One Stats-API unit ≈ 2.5 feet (calibrated
+// against batted-ball total_distance).
+//
+// Canvas: 350 × 350 SVG, home plate at (175, 320), 200/300/400ft arcs drawn
+// as quarter-circle strokes. Foul lines drawn at ±45°.
+var SC_W = 350, SC_H = 350;
+var SC_HP = { x: 175, y: 320 };           // home plate canvas position
+var SC_FT_PER_PX = 2.0;                   // tuned for the canvas
+function sc_arcRadius(ft) { return ft / SC_FT_PER_PX; }
+
+// Stats-API → canvas coordinate transform.
+//   (raw_x=125, raw_y=200) → home plate
+//   raw scale: 1 unit ≈ 2.5 feet → canvas: feet × (1/SC_FT_PER_PX)
+function sc_project(raw_x, raw_y) {
+  if (raw_x == null || raw_y == null) return null;
+  var dx = raw_x - 125;
+  var dy = 200 - raw_y;       // flip y so deeper hits are higher on canvas
+  // Stats API unit ≈ 2.5 ft, so feet = unit × 2.5
+  var ftX = dx * 2.5;
+  var ftY = dy * 2.5;
+  var px = SC_HP.x + ftX / SC_FT_PER_PX;
+  var py = SC_HP.y - ftY / SC_FT_PER_PX;
+  return { x: px, y: py };
+}
+
+function sc_dotColor(bb) {
+  return ({
+    line_drive: '#047857',  // green
+    fly_ball:   '#C2410C',  // orange
+    ground_ball:'#1D4ED8',  // blue
+    popup:      '#B91C1C'   // red
+  })[bb] || '#6b88aa';
+}
+
+function sprayChartSVG(events) {
+  if (!events || !events.length) {
+    return '<div class="ar-empty" style="height:300px;display:flex;align-items:center;justify-content:center">'
+      + 'No batted-ball events with Statcast tracking yet.<br>'
+      + '<span class="ar-empty-sub">Coverage is full at AAA, partial at FSL.</span>'
+      + '</div>';
+  }
+  // Outfield wall arc — quarter-circle from foul line to foul line at ~410ft.
+  var wallR = sc_arcRadius(410);
+  // Foul lines from home plate at -45° and +45° (in canvas terms, that's 45°
+  // off vertical to the upper-left and upper-right).
+  // sin(45°)*r ≈ 0.707 r
+  var foul = 0.707 * wallR;
+  var foulPathR = 'M' + SC_HP.x + ',' + SC_HP.y + ' L' + (SC_HP.x + foul) + ',' + (SC_HP.y - foul);
+  var foulPathL = 'M' + SC_HP.x + ',' + SC_HP.y + ' L' + (SC_HP.x - foul) + ',' + (SC_HP.y - foul);
+  // Wall arc — quarter circle (135°→45°)
+  var wallStart = { x: SC_HP.x - foul, y: SC_HP.y - foul };
+  var wallEnd   = { x: SC_HP.x + foul, y: SC_HP.y - foul };
+  var wallArc = 'M' + wallStart.x + ',' + wallStart.y
+    + ' A' + wallR + ',' + wallR + ' 0 0 1 ' + wallEnd.x + ',' + wallEnd.y;
+  // Distance arcs: 200/300/400 ft
+  function arcAtFt(ft) {
+    var r = sc_arcRadius(ft);
+    var f = 0.707 * r;
+    var sx = SC_HP.x - f, sy = SC_HP.y - f;
+    var ex = SC_HP.x + f, ey = SC_HP.y - f;
+    return 'M' + sx + ',' + sy + ' A' + r + ',' + r + ' 0 0 1 ' + ex + ',' + ey;
+  }
+  var dots = events.map(function (e) {
+    var p = sc_project(e.x, e.y);
+    if (!p) return '';
+    var color = sc_dotColor(e.bb);
+    var stroke = (e.e && /home run|homer/i.test(e.e)) ? '#a00' : 'none';
+    var sw = (stroke === 'none') ? 0 : 1.5;
+    return '<circle cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="3.2" '
+      + 'fill="' + color + '" fill-opacity="0.78" stroke="' + stroke + '" stroke-width="' + sw + '">'
+      + '<title>' + escapeHtml((e.e || '')) + ' · ' + (e.ev != null ? e.ev.toFixed(1) + ' mph' : '--') + ' · ' + (e.la != null ? e.la.toFixed(0) + '°' : '--') + (e.dist != null ? ' · ' + e.dist + ' ft' : '') + '</title>'
+      + '</circle>';
+  }).join('');
+  // Distance labels
+  var lblFt = function (ft) {
+    var r = sc_arcRadius(ft);
+    var lx = SC_HP.x - r * 0.06;
+    var ly = SC_HP.y - r;
+    return '<text x="' + lx + '" y="' + (ly + 11) + '" class="sc-arc-lbl">' + ft + 'ft</text>';
+  };
+  return '<svg class="spray-chart-svg" viewBox="0 0 ' + SC_W + ' ' + SC_H + '" preserveAspectRatio="xMidYMid meet">'
+    + '<path d="' + arcAtFt(200) + '" class="sc-arc" />'
+    + '<path d="' + arcAtFt(300) + '" class="sc-arc" />'
+    + '<path d="' + arcAtFt(400) + '" class="sc-arc" />'
+    + '<path d="' + foulPathL + '" class="sc-foul" />'
+    + '<path d="' + foulPathR + '" class="sc-foul" />'
+    + '<path d="' + wallArc + '" class="sc-wall" />'
+    + lblFt(200) + lblFt(300) + lblFt(400)
+    + '<rect x="' + (SC_HP.x - 4) + '" y="' + (SC_HP.y - 2) + '" width="8" height="8" class="sc-home" />'
+    + dots
+    + '</svg>'
+    + '<div class="sc-legend">'
+    +   '<span><span class="sc-dot" style="background:#1D4ED8"></span>Ground ball</span>'
+    +   '<span><span class="sc-dot" style="background:#047857"></span>Line drive</span>'
+    +   '<span><span class="sc-dot" style="background:#C2410C"></span>Fly ball</span>'
+    +   '<span><span class="sc-dot" style="background:#B91C1C"></span>Popup</span>'
+    + '</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// BATTED BALL PROFILE PANEL  (distribution + spray cone + quality of contact)
+// ═════════════════════════════════════════════════════════════════════════════
+
+function bbpDistributionRow(label, pct, color) {
+  var w = (pct == null || isNaN(pct)) ? 0 : clamp(pct, 0, 100);
+  return '<div class="bbp-dist-row">'
+    +  '<span class="bbp-dist-dot" style="background:' + color + '"></span>'
+    +  '<span class="bbp-dist-lbl">' + escapeHtml(label) + '</span>'
+    +  '<span class="bbp-dist-bar"><span class="bbp-dist-fill" style="width:' + w.toFixed(1) + '%;background:' + color + '"></span></span>'
+    +  '<span class="bbp-dist-pct">' + (pct == null || isNaN(pct) ? '--' : pct.toFixed(1) + '%') + '</span>'
+    + '</div>';
+}
+
+function bbpDistribution(agg) {
+  return '<div class="bbp-dist">'
+    +  '<div class="bbp-section-lbl">Distribution</div>'
+    +  bbpDistributionRow('Ground Ball', agg.gb_pct, '#1D4ED8')
+    +  bbpDistributionRow('Line Drive',  agg.ld_pct, '#047857')
+    +  bbpDistributionRow('Fly Ball',    agg.fb_pct, '#C2410C')
+    +  bbpDistributionRow('Popup',       agg.pu_pct, '#B91C1C')
+    + '</div>';
+}
+
+// 3-cone spray-direction triangle, RHB-perspective (LHB cone is mirrored
+// in the data already since classifySpray flips by stand).
+function bbpSprayCone(agg, stand) {
+  // 200x110 svg, home plate at bottom-center (100, 105)
+  var cx = 100, cy = 105;
+  var len = 95;
+  // 3 cones: left (pull for RHB), center, right (oppo for RHB)
+  // angles: full field is 90° (45° each side of vertical), each cone = 30°
+  // For RHB: pull = LF cone (left), oppo = RF cone (right)
+  // Build the 3 polygons
+  function cone(angleStart, angleEnd, fill, opacity) {
+    // angles measured from vertical-up (12 o'clock), clockwise
+    var aS = (angleStart - 90) * Math.PI / 180;
+    var aE = (angleEnd - 90) * Math.PI / 180;
+    var x1 = cx + len * Math.cos(aS), y1 = cy + len * Math.sin(aS);
+    var x2 = cx + len * Math.cos(aE), y2 = cy + len * Math.sin(aE);
+    return '<polygon points="' + cx + ',' + cy + ' ' + x1.toFixed(1) + ',' + y1.toFixed(1) + ' ' + x2.toFixed(1) + ',' + y2.toFixed(1) + '" fill="' + fill + '" fill-opacity="' + opacity + '" stroke="' + fill + '" stroke-width="1" />';
+  }
+  // For LHB the visual labels swap (Pull is on the right, Oppo on the left).
+  var isLHB = stand === 'L';
+  var pullCol = '#9C2E2E', centerCol = '#7A4F1A', oppoCol = '#1F4D7A';
+  // Cones: left (LF) = -45 to -15, center -15 to +15, right (RF) +15 to +45
+  // (relative to vertical-up, clockwise)
+  var pullPct = agg.pull_pct, ctrPct = agg.center_pct, oppoPct = agg.oppo_pct;
+  var leftPct = isLHB ? oppoPct : pullPct;
+  var rightPct = isLHB ? pullPct : oppoPct;
+  var leftLbl = isLHB ? 'OPPO' : 'PULL';
+  var rightLbl = isLHB ? 'PULL' : 'OPPO';
+  var fmtCone = function (v) { return (v == null || isNaN(v)) ? '--' : v.toFixed(1) + '%'; };
+  return '<div class="bbp-spray">'
+    +  '<div class="bbp-section-lbl">Spray Direction (' + (isLHB ? 'LHB' : 'RHB') + ')</div>'
+    +  '<svg class="bbp-spray-svg" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid meet">'
+    +    cone(-45, -15, isLHB ? oppoCol : pullCol, 0.42)
+    +    cone(-15,  15, centerCol, 0.42)
+    +    cone( 15,  45, isLHB ? pullCol : oppoCol, 0.42)
+    +    '<text x="40" y="50" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
+    +    '<text x="40" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
+    +    '<text x="100" y="50" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
+    +    '<text x="100" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(ctrPct) + '</text>'
+    +    '<text x="160" y="50" class="bbp-spray-lbl" text-anchor="middle">' + rightLbl + '</text>'
+    +    '<text x="160" y="64" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(rightPct) + '</text>'
+    +  '</svg>'
+    + '</div>';
+}
+
+// Quality of Contact table — 8 rows with vs-avg deltas.
+function bbpQoCRow(label, value, leagueAvg, dir, valFmt, diffFmt) {
+  var diff = (value != null && leagueAvg != null && !isNaN(value) && !isNaN(leagueAvg))
+    ? value - leagueAvg : null;
+  var diffCell = '<td class="bbp-qoc-diff">--</td>';
+  if (diff != null) {
+    var good = (dir === 1) ? diff >= 0 : diff <= 0;
+    var cls = good ? 'diff-good' : 'diff-bad';
+    var sign = diff >= 0 ? '+' : '';
+    var diffStr = diffFmt ? sign + diffFmt(diff) : sign + valFmt(diff);
+    diffCell = '<td class="bbp-qoc-diff ' + cls + '">' + diffStr + '</td>';
+  }
+  return '<tr><td class="bbp-qoc-lbl">' + escapeHtml(label) + '</td>'
+    + '<td class="bbp-qoc-val">' + valFmt(value) + '</td>'
+    + diffCell
+    + '</tr>';
+}
+
+function bbpQualityOfContact(agg, lgAgg, p) {
+  // lgAgg: { avg_ev, hard_hit_pct, ... } from running BBE means
+  // p: stats-API row with xba/xslg (already in player object)
+  var pp = function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + 'pp'; };
+  var rows = []
+    .concat(bbpQoCRow('Avg Exit Velo',  agg.avg_ev,         lgAgg.avg_ev,         1, fmtMph, function (d) { return '+' + d.toFixed(1); }))
+    .concat(bbpQoCRow('Max Exit Velo',  agg.max_ev,         lgAgg.max_ev,         1, fmtMph, function (d) { return '+' + d.toFixed(1); }))
+    .concat(bbpQoCRow('Barrel%',        agg.barrel_pct,     lgAgg.barrel_pct,     1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
+    .concat(bbpQoCRow('Hard Hit%',      agg.hard_hit_pct,   lgAgg.hard_hit_pct,   1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
+    .concat(bbpQoCRow('Sweet Spot%',    agg.sweet_spot_pct, lgAgg.sweet_spot_pct, 1, function (v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }, pp))
+    .concat(bbpQoCRow('Avg LA',         agg.avg_la,         lgAgg.avg_la,         1, fmtDeg, function (d) { return '+' + d.toFixed(1); }))
+    .concat(bbpQoCRow('xBA',            (p && p.xba),       (lgAgg && lgAgg.xba), 1, fmt3))
+    .concat(bbpQoCRow('xSLG',           (p && p.xslg),      (lgAgg && lgAgg.xslg),1, fmt3));
+  return '<div class="bbp-qoc">'
+    + '<div class="bbp-section-lbl">Quality of Contact</div>'
+    + '<table class="bbp-qoc-tbl"><thead><tr><th>Metric</th><th>Value</th><th>vs Avg</th></tr></thead><tbody>'
+    + rows + '</tbody></table>'
+    + '</div>';
+}
+
+function battedBallProfileFromBBE(bbe, lgAgg, p) {
+  if (!bbe || !bbe.agg || !bbe.agg.n) {
+    return '<div class="ar-empty" style="padding:18px 14px">'
+      + 'No batted-ball events tracked yet for this player.<br>'
+      + '<span class="ar-empty-sub">Coverage is full at AAA, partial at FSL.</span>'
+      + '</div>';
+  }
+  var agg = bbe.agg;
+  // Determine stand from the first event with a stand value
+  var stand = null;
+  for (var i = 0; i < bbe.events.length; i++) {
+    if (bbe.events[i].s) { stand = bbe.events[i].s; break; }
+  }
+  return bbpDistribution(agg)
+    + bbpSprayCone(agg, stand)
+    + bbpQualityOfContact(agg, lgAgg || {}, p);
+}
+
+function battedBallProfileLoading() {
+  return '<div class="bbp-loading">Loading Statcast events…</div>';
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HITTER CARD
+// ═════════════════════════════════════════════════════════════════════════════
 function renderHitter(p, lg, levelLabel) {
   var qualified = lg && lg.qualified && (p.pa || 0) >= QUAL_PA;
   var levelLeague = (levelLabel || '').toUpperCase() + (p.league ? ' · ' + p.league : '');
 
-  // Headline KPI strip — 5 cells matching MLB layout (AVG, OPS, wOBA, HR, ISO)
+  // Headline KPI strip
   var kpis = [
     ['AVG',  fmt3(p.avg)],
     ['OPS',  fmt3(p.ops)],
     ['wOBA', fmt3(p.woba)],
     ['HR',   fmtInt(p.hr)],
     ['ISO',  fmt3(p.iso)]
-  ];
-
-  // Slash Line Profile
-  var slash = [
-    ['AVG',   fmt3(p.avg)],
-    ['OBP',   fmt3(p.obp)],
-    ['SLG',   fmt3(p.slg)],
-    ['OPS',   fmt3(p.ops)],
-    ['wOBA',  fmt3(p.woba)],
-    ['BABIP', fmt3(p.babip)]
   ];
 
   // Plate Discipline bars — vs league
@@ -340,17 +629,6 @@ function renderHitter(p, lg, levelLabel) {
     pdBar('Whiff%',   p.whiff_pct,   qualified ? lg.whiff_pct   : null, 'whiff_pct_h',   qualified),
     pdBar('Contact%', p.contact_pct, qualified ? lg.contact_pct : null, 'contact_pct_h', qualified)
   ].join('');
-
-  // Batted-Ball Profile gauges — the 3 expected-stats fields the MLB Stats API
-  // exposes for MiLB: xwOBA, xBA, xSLG. Stats API does NOT expose EV /
-  // Hard-Hit% / Barrel% for AAA / FSL (Savant is silently MLB-only for those
-  // metrics), so we render only the 3 available quality signals.
-  var bbHtml = [
-    gauge('xwOBA', p.xwoba, qualified ? lg.xwoba : null, 'xwoba', fmt3, qualified),
-    gauge('xBA',   p.xba,   qualified ? lg.xba   : null, 'xba',   fmt3, qualified),
-    gauge('xSLG',  p.xslg,  qualified ? lg.xslg  : null, 'xslg',  fmt3, qualified)
-  ].join('');
-  var bbHasData = !bbAbsent(p, ['xwoba', 'xba', 'xslg']);
 
   // Stat line table — counting + speed
   var sl = '<table class="stat-tbl"><thead><tr><th>Metric</th><th>Value</th><th>Metric</th><th>Value</th></tr></thead><tbody>'
@@ -362,9 +640,7 @@ function renderHitter(p, lg, levelLabel) {
     + '<tr><td>HR</td><td>' + fmtInt(p.hr)  + '</td><td>HBP</td><td>' + fmtInt(p.hbp) + '</td></tr>'
     + '</tbody></table>';
 
-  // vs Level Avg footer table — 4 rows × 2 cols absorbing both trad metrics
-  // and the new Statcast quality metrics so the user can compare on one
-  // line whether the hitter is over- or under-performing peers.
+  // vs Level Avg footer
   var rows = [];
   rows.push(vsRow('AVG',  p.avg,   qualified ? lg.avg   : null, 1, fmt3).concat(
             vsRow('xBA',  p.xba,   qualified ? lg.xba   : null, 1, fmt3)));
@@ -380,7 +656,7 @@ function renderHitter(p, lg, levelLabel) {
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified PA threshold">Small Sample · PA &lt; ' + QUAL_PA + '</span>';
   var vsLbl = qualified
-    ? 'vs. ' + escapeHtml(levelLeague) + ' Average (PA \u2265 ' + QUAL_PA + ')'
+    ? 'vs. ' + escapeHtml(levelLeague) + ' Average (PA ≥ ' + QUAL_PA + ')'
     : 'vs. ' + escapeHtml(levelLeague) + ' Average — small sample (PA &lt; ' + QUAL_PA + ')';
 
   return ''
@@ -406,12 +682,16 @@ function renderHitter(p, lg, levelLabel) {
     +   '</div>'
     +   '<div class="pc-body">'
     +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel">'
-    +         '<div class="cp-title">Slash Line Profile<span class="cp-src cp-src-mlb">Stats API</span></div>'
-    +         '<div class="slash-grid">'
-    +           slash.map(function (s) { return '<div class="slash-cell"><div class="slash-val">' + s[1] + '</div><div class="slash-lbl">' + s[0] + '</div></div>'; }).join('')
-    +         '</div>'
+    +       '<div class="chart-panel" data-bbe-target="spray-' + (p.player_id || '0') + '">'
+    +         '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>'
+    +         '<div class="bbp-loading">Loading Statcast events…</div>'
     +       '</div>'
+    +       '<div class="chart-panel bbp-panel" data-bbe-target="bbp-' + (p.player_id || '0') + '">'
+    +         '<div class="cp-title">Batted Ball Profile<span class="cp-src cp-src-mlb">Statcast</span></div>'
+    +         battedBallProfileLoading()
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="pc-row pc-row-2col">'
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">Plate Discipline<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         pdHtml
@@ -420,12 +700,6 @@ function renderHitter(p, lg, levelLabel) {
     +           '<span><span class="swatch" style="background:var(--red)"></span>Worse</span>'
     +           '<span><span class="swatch" style="background:rgba(45,36,24,.55)"></span>League avg</span>'
     +         '</div>'
-    +       '</div>'
-    +     '</div>'
-    +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel ' + (qualified && bbHasData ? '' : 'pc-sss') + '">'
-    +         '<div class="cp-title">Batted-Ball Profile<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         (bbHasData ? ('<div class="gauge-grid">' + bbHtml + '</div>') : bbEmptyMsg())
     +       '</div>'
     +       '<div class="stat-section">'
     +         '<div class="cp-title">Stat Line<span class="cp-src cp-src-mlb">Stats API</span></div>'
@@ -439,12 +713,14 @@ function renderHitter(p, lg, levelLabel) {
     +         '<th>Metric</th><th>Value</th><th>Lg Avg</th><th>vs Avg</th>'
     +       '</tr></thead><tbody>' + vsRows + '</tbody></table>'
     +     '</div>'
-    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast expectedStatistics. AAA has full Statcast coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast expectedStatistics + per-event hit_data from MLB Stats API live feeds. AAA has full Statcast coverage; FSL is partial. League avgs computed from qualified players in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
 }
 
-// ── Pitcher card ────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// PITCHER CARD (unchanged from prior rebuild — no BBE-against panel yet)
+// ═════════════════════════════════════════════════════════════════════════════
 function renderPitcher(p, lg, levelLabel) {
   var qualified = lg && lg.qualified && (p.ip || 0) >= QUAL_IP;
   var levelLeague = (levelLabel || '').toUpperCase() + (p.league ? ' · ' + p.league : '');
@@ -457,22 +733,18 @@ function renderPitcher(p, lg, levelLabel) {
     ['K-BB%', fmtPct(p.kbb_pct, 1)]
   ];
 
-  // Pitch Arsenal table replaces Run Prevention (ERA/FIP/WHIP/HR9/AVGa/OPSa
-  // were all redundant — ERA/FIP/WHIP are header KPIs and the rest moved
-  // to the vs-Avg footer). Source: Stats API pitchArsenal.
-  var arsenalHtml = arsenalTable(p.pitch_arsenal);
-  var hasArsenal = !!(p.pitch_arsenal && p.pitch_arsenal.length);
+  // Arsenal lazy-loads from data/milb/<level>/arsenal/<pid>.json — see
+  // hydrateArsenal() in the open path. Inline the loading state here.
+  var arsenalHtml = '<div class="ar-loading">Loading pitch arsenal…</div>';
+  var hasArsenal = true;  // optimistic — empty state replaces if shard missing
 
   var pdHtml = [
-    pdBar('K%',       p.k_pct,      qualified ? lg.k_pct      : null, 'k_pct_p',      qualified),
-    pdBar('BB%',      p.bb_pct,     qualified ? lg.bb_pct     : null, 'bb_pct_p',     qualified),
-    pdBar('Whiff%',   p.whiff_pct,  qualified ? lg.whiff_pct  : null, 'whiff_pct_p',  qualified),
-    pdBar('Strike%',  p.strike_pct, qualified ? lg.strike_pct : null, 'strike_pct_p', qualified)
+    pdBar('K%',      p.k_pct,      qualified ? lg.k_pct      : null, 'k_pct_p',      qualified),
+    pdBar('BB%',     p.bb_pct,     qualified ? lg.bb_pct     : null, 'bb_pct_p',     qualified),
+    pdBar('Whiff%',  p.whiff_pct,  qualified ? lg.whiff_pct  : null, 'whiff_pct_p',  qualified),
+    pdBar('Strike%', p.strike_pct, qualified ? lg.strike_pct : null, 'strike_pct_p', qualified)
   ].join('');
 
-  // Batted-Ball Against gauges — the 3 expected-stats fields available from
-  // MLB Stats API for MiLB pitchers (xwOBA-A, xBA-A, xSLG-A). Stats API does
-  // NOT expose EV-A / Hard-Hit%-A for AAA / FSL.
   var bbAHtml = [
     gauge('xwOBA-A', p.xwoba_a, qualified ? lg.xwoba_a : null, 'xwoba_a', fmt3, qualified),
     gauge('xBA-A',   p.xba_a,   qualified ? lg.xba_a   : null, 'xba_a',   fmt3, qualified),
@@ -484,14 +756,11 @@ function renderPitcher(p, lg, levelLabel) {
     + '<tr><td>G</td><td>'      + fmtInt(p.g)  + '</td><td>BF</td><td>'    + fmtInt(p.bf)  + '</td></tr>'
     + '<tr><td>GS</td><td>'     + fmtInt(p.gs) + '</td><td>H</td><td>'     + fmtInt(p.h_a) + '</td></tr>'
     + '<tr><td>IP</td><td>'     + fmtIP(p.ip)  + '</td><td>R / ER</td><td>'+ fmtInt(p.r_a) + ' / ' + fmtInt(p.er) + '</td></tr>'
-    + '<tr><td>W-L</td><td>'    + fmtInt(p.w)  + '\u2013' + fmtInt(p.l) + '</td><td>BB</td><td>' + fmtInt(p.bb) + '</td></tr>'
+    + '<tr><td>W-L</td><td>'    + fmtInt(p.w)  + '–' + fmtInt(p.l) + '</td><td>BB</td><td>' + fmtInt(p.bb) + '</td></tr>'
     + '<tr><td>SV</td><td>'     + fmtInt(p.sv) + '</td><td>SO</td><td>'    + fmtInt(p.k)   + '</td></tr>'
     + '<tr><td>HR-A</td><td>'   + fmtInt(p.hr_a) + '</td><td>HBP</td><td>' + fmtInt(p.hbp) + '</td></tr>'
     + '</tbody></table>';
 
-  // 5 rows × 2 cols. Absorbs metrics that were lost when Run Prevention +
-  // Quality vs Hitters were replaced (HR9, AVG-A, OPS-A) plus the new
-  // Hawk-Eye xStats so the user can compare contact quality on one line.
   var rows = [];
   rows.push(vsRow('ERA',     p.era,     qualified ? lg.era     : null, -1, fmt2).concat(
             vsRow('K%',      p.k_pct,   qualified ? lg.k_pct   : null, 1,  function (v) { return fmtPct(v, 1); }, function (d) { return d.toFixed(1); })));
@@ -509,7 +778,7 @@ function renderPitcher(p, lg, levelLabel) {
 
   var sssChip = qualified ? '' : '<span class="pc-sss-chip" title="Below qualified IP threshold">Small Sample · IP &lt; ' + QUAL_IP + '</span>';
   var vsLbl = qualified
-    ? 'vs. ' + escapeHtml(levelLeague) + ' Average (IP \u2265 ' + QUAL_IP + ')'
+    ? 'vs. ' + escapeHtml(levelLeague) + ' Average (IP ≥ ' + QUAL_IP + ')'
     : 'vs. ' + escapeHtml(levelLeague) + ' Average — small sample (IP &lt; ' + QUAL_IP + ')';
 
   return ''
@@ -535,7 +804,7 @@ function renderPitcher(p, lg, levelLabel) {
     +   '</div>'
     +   '<div class="pc-body">'
     +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel' + (hasArsenal ? '' : ' pc-empty-panel') + '">'
+    +       '<div class="chart-panel" data-arsenal-target="' + (p.player_id || '0') + '">'
     +         '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>'
     +         arsenalHtml
     +       '</div>'
@@ -571,22 +840,79 @@ function renderPitcher(p, lg, levelLabel) {
     + '</div>';
 }
 
-// ── Open / close ────────────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+// LAZY BBE LOAD + RE-RENDER
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// After the synchronous render paints the card, fetch the BBE shard for the
+// hitter and replace the Spray Chart + Batted Ball Profile panels in place.
+// On miss / error / FSL-no-coverage, replace with empty-state.
+function hydrateBBE(player, levelLabel) {
+  if (!player || !player.player_id) return;
+  var levelKey = String(levelLabel || '').toLowerCase();
+  fetchBBE(levelLabel, player.player_id).then(function (bbe) {
+    var sprayEl = document.querySelector('[data-bbe-target="spray-' + player.player_id + '"]');
+    var bbpEl   = document.querySelector('[data-bbe-target="bbp-'   + player.player_id + '"]');
+    if (sprayEl) {
+      // Replace the loading div inside the panel
+      var titleHtml = '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>';
+      sprayEl.innerHTML = titleHtml + sprayChartSVG(bbe ? bbe.events : null);
+    }
+    if (bbpEl) {
+      // Record this player's agg into the running level-avg and compute lgAgg
+      if (bbe && bbe.agg) _recordBbeAgg(levelKey, player.player_id, bbe.agg);
+      var lgAgg = {
+        avg_ev:         _bbeMean(levelKey, 'avg_ev'),
+        max_ev:         null,
+        hard_hit_pct:   _bbeMean(levelKey, 'hard_hit_pct'),
+        sweet_spot_pct: _bbeMean(levelKey, 'sweet_spot_pct'),
+        barrel_pct:     _bbeMean(levelKey, 'barrel_pct'),
+        gb_pct:         _bbeMean(levelKey, 'gb_pct'),
+        ld_pct:         _bbeMean(levelKey, 'ld_pct'),
+        fb_pct:         _bbeMean(levelKey, 'fb_pct'),
+        pu_pct:         _bbeMean(levelKey, 'pu_pct'),
+        pull_pct:       _bbeMean(levelKey, 'pull_pct'),
+        center_pct:     _bbeMean(levelKey, 'center_pct'),
+        oppo_pct:       _bbeMean(levelKey, 'oppo_pct'),
+        avg_la:         null,
+        xba:            null,
+        xslg:           null
+      };
+      var titleHtml = '<div class="cp-title">Batted Ball Profile<span class="cp-src cp-src-mlb">Statcast</span></div>';
+      bbpEl.innerHTML = titleHtml + battedBallProfileFromBBE(bbe, lgAgg, player);
+    }
+  });
+}
+
+// Hydrate pitcher pitch arsenal: fetch arsenal shard and re-render the panel.
+function hydrateArsenal(player, levelLabel) {
+  if (!player || !player.player_id) return;
+  fetchArsenal(levelLabel, player.player_id).then(function (data) {
+    var el = document.querySelector('[data-arsenal-target="' + player.player_id + '"]');
+    if (!el) return;
+    var titleHtml = '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>';
+    var bodyHtml;
+    if (data && data.arsenal && data.arsenal.length) {
+      bodyHtml = arsenalTable(data.arsenal);
+    } else {
+      bodyHtml = arsenalTable(null);  // empty-state HTML
+    }
+    el.innerHTML = titleHtml + bodyHtml;
+  });
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// OPEN / CLOSE
+// ═════════════════════════════════════════════════════════════════════════════
 function ensureOverlay() {
   var ov = document.getElementById('pc-overlay');
   if (ov) return ov;
   ov = document.createElement('div');
   ov.id = 'pc-overlay';
   ov.innerHTML = '<div id="pc-overlay-content"></div>';
-  // click-outside-to-close (matches MLB explorer behaviour)
-  ov.addEventListener('click', function (e) {
-    if (e.target === ov) close();
-  });
+  ov.addEventListener('click', function (e) { if (e.target === ov) close(); });
   document.body.appendChild(ov);
-  // ESC to close
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') close();
-  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
   return ov;
 }
 
@@ -605,8 +931,12 @@ function open(player, mode, db, levelLabel) {
   }
   content.innerHTML = html;
   ov.classList.add('visible');
-  // Lock body scroll while drawer is open
   document.body.style.overflow = 'hidden';
+  // Hitter cards: lazy-load BBE shard + re-render the Spray Chart + BBP panels.
+  // Pitcher cards: lazy-load arsenal shard (Stats API pitchArsenal endpoint
+  // is deprecated; we extract per-pitch from live feeds in the BBE fetcher).
+  if (mode === 'pitchers') hydrateArsenal(player, levelLabel);
+  else hydrateBBE(player, levelLabel);
 }
 
 function close() {
@@ -625,6 +955,8 @@ window.MiLBCards = {
   _computePitcherLeagueAvgs: computePitcherLeagueAvgs,
   _renderHitter: renderHitter,
   _renderPitcher: renderPitcher,
+  _sprayChartSVG: sprayChartSVG,
+  _battedBallProfileFromBBE: battedBallProfileFromBBE,
   _QUAL_PA: QUAL_PA,
   _QUAL_IP: QUAL_IP
 };
