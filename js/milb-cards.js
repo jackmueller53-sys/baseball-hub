@@ -468,7 +468,7 @@ function sprayChartSVG(events) {
     + lblFt(200) + lblFt(300) + lblFt(400)
     + '<rect x="' + (SC_HP.x - 4) + '" y="' + (SC_HP.y - 2) + '" width="8" height="8" class="sc-home" />'
     + '<text x="' + SC_HP.x + '" y="' + (SC_HP.y + 16) + '" class="sc-home-lbl" text-anchor="middle">HOME</text>'
-    + '<text x="10" y="18" class="sc-event-count">N=' + events.length + '</text>'
+    + '<text x="340" y="22" class="sc-event-count" text-anchor="end">N=' + events.length + ' EVENTS</text>'
     + dots
     + '</svg>'
     + '<div class="sc-legend">'
@@ -509,11 +509,12 @@ function bbpDistribution(agg) {
 // 3-cone spray-direction triangle, RHB-perspective (LHB cone is mirrored
 // in the data already since classifySpray flips by stand).
 function bbpSprayCone(agg, stand) {
-  // viewBox: 240 wide × 160 tall. Home plate at bottom-center (120, 145).
-  // Cones fan upward; each label is positioned at the bisector of its cone
-  // at ~55% of cone length so it sits inside the cone (matches MLB layout).
-  var cx = 120, cy = 145;
-  var len = 110;
+  // viewBox: 280 wide × 200 tall. Home plate at bottom-center (140, 155).
+  // Cones fan upward. Field tip labels (LF/CF/RF) at outer arc; OPPO/CENTER
+  // /PULL labels + percentages laid out in a clean horizontal row BELOW the
+  // cone (no overlap with cone fill).
+  var cx = 140, cy = 155;
+  var len = 130;
   function cone(angleStart, angleEnd, fill, opacity) {
     var aS = (angleStart - 90) * Math.PI / 180;
     var aE = (angleEnd - 90) * Math.PI / 180;
@@ -545,19 +546,20 @@ function bbpSprayCone(agg, stand) {
   var rT = labelPos( 15,  45, 1.05);
   return '<div class="bbp-spray">'
     +  '<div class="bbp-section-lbl">Spray Direction (' + (isLHB ? 'LHB' : 'RHB') + ')</div>'
-    +  '<svg class="bbp-spray-svg" viewBox="0 0 240 170" preserveAspectRatio="xMidYMid meet">'
+    +  '<svg class="bbp-spray-svg" viewBox="0 0 280 200" preserveAspectRatio="xMidYMid meet">'
     +    cone(-45, -15, isLHB ? oppoCol : pullCol, 0.32)
     +    cone(-15,  15, centerCol, 0.32)
     +    cone( 15,  45, isLHB ? pullCol : oppoCol, 0.32)
     +    '<text x="' + lT.x.toFixed(1) + '" y="' + lT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">LF</text>'
     +    '<text x="' + cT.x.toFixed(1) + '" y="' + cT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">CF</text>'
     +    '<text x="' + rT.x.toFixed(1) + '" y="' + rT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">RF</text>'
-    +    '<text x="' + lP.x.toFixed(1) + '" y="' + (lP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
-    +    '<text x="' + lP.x.toFixed(1) + '" y="' + (lP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
-    +    '<text x="' + cP.x.toFixed(1) + '" y="' + (cP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
-    +    '<text x="' + cP.x.toFixed(1) + '" y="' + (cP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(ctrPct) + '</text>'
-    +    '<text x="' + rP.x.toFixed(1) + '" y="' + (rP.y - 6).toFixed(1) + '" class="bbp-spray-lbl" text-anchor="middle">' + rightLbl + '</text>'
-    +    '<text x="' + rP.x.toFixed(1) + '" y="' + (rP.y + 8).toFixed(1) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(rightPct) + '</text>'
+    +    '<rect x="4" y="' + (cy + 25) + '" width="272" height="1" fill="rgba(45,36,24,0.12)" />'
+    +    '<text x="55"  y="' + (cy + 42) + '" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
+    +    '<text x="55"  y="' + (cy + 58) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
+    +    '<text x="140" y="' + (cy + 42) + '" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
+    +    '<text x="140" y="' + (cy + 58) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(ctrPct) + '</text>'
+    +    '<text x="225" y="' + (cy + 42) + '" class="bbp-spray-lbl" text-anchor="middle">' + rightLbl + '</text>'
+    +    '<text x="225" y="' + (cy + 58) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(rightPct) + '</text>'
     +  '</svg>'
     + '</div>';
 }
