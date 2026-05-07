@@ -546,14 +546,14 @@ function bbpSprayCone(agg, stand) {
   var rT = labelPos( 15,  45, 1.05);
   return '<div class="bbp-spray">'
     +  '<div class="bbp-section-lbl">Spray Direction (' + (isLHB ? 'LHB' : 'RHB') + ')</div>'
-    +  '<svg class="bbp-spray-svg" viewBox="0 0 280 200" preserveAspectRatio="xMidYMid meet">'
+    +  '<svg class="bbp-spray-svg" viewBox="0 0 280 220" preserveAspectRatio="xMidYMid meet">'
     +    cone(-45, -15, isLHB ? oppoCol : pullCol, 0.32)
     +    cone(-15,  15, centerCol, 0.32)
     +    cone( 15,  45, isLHB ? pullCol : oppoCol, 0.32)
     +    '<text x="' + lT.x.toFixed(1) + '" y="' + lT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">LF</text>'
     +    '<text x="' + cT.x.toFixed(1) + '" y="' + cT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">CF</text>'
     +    '<text x="' + rT.x.toFixed(1) + '" y="' + rT.y.toFixed(1) + '" class="bbp-spray-tip" text-anchor="middle">RF</text>'
-    +    '<rect x="4" y="' + (cy + 25) + '" width="272" height="1" fill="rgba(45,36,24,0.12)" />'
+    +    '<rect x="20" y="' + (cy + 20) + '" width="240" height="1" fill="rgba(45,36,24,0.18)" />'
     +    '<text x="55"  y="' + (cy + 42) + '" class="bbp-spray-lbl" text-anchor="middle">' + leftLbl + '</text>'
     +    '<text x="55"  y="' + (cy + 58) + '" class="bbp-spray-pct" text-anchor="middle">' + fmtCone(leftPct) + '</text>'
     +    '<text x="140" y="' + (cy + 42) + '" class="bbp-spray-lbl" text-anchor="middle">CENTER</text>'
