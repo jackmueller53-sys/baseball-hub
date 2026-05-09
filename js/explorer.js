@@ -2665,7 +2665,10 @@ function renderHitterBBProfile(data, player) {
 
 // ── ROW MAPPERS ──────────────────────────────────────────────────────────────
 function mapHitter(fg, sv, sp){
-  const teamRaw = fg["Team"]||fg["team"]||"";
+  // FanGraphs ships team as HTML <a> link; strip to plain abbreviation so the
+  // team-filter dropdown can do an exact-match comparison (was matching on a
+  // 135-char HTML string and never finding any rows).
+  const teamRaw = stripHTML(fg["Team"]||fg["team"]||"");
   const team = (teamRaw==="- - -"||teamRaw==="---") ? (sv?sv["team_name_abbrev"]||"":"") : teamRaw;
   return {
     name:       stripHTML(fg["Name"]||fg["PlayerName"]||""),
@@ -2715,7 +2718,7 @@ function mapHitter(fg, sv, sp){
 function mapPitcher(fg, sv, disc){
   const g  = nf(fg["G"]||fg["g"])||1;
   const gs = nf(fg["GS"]||fg["gs"])||0;
-  const teamRaw = fg["Team"]||fg["team"]||"";
+  const teamRaw = stripHTML(fg["Team"]||fg["team"]||"");
   const team = (teamRaw==="- - -"||teamRaw==="---"||teamRaw==="TOT") ? (sv?sv["team_name_abbrev"]||"":"") : teamRaw;
   // CSW% from FG plate-discipline call; SwStr% from same
   const cswPct = disc ? pct(disc["CSW%"]||disc["csw_pct"]||disc["CStr%"]) : null;
