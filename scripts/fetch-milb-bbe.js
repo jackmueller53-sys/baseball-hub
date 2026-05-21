@@ -66,6 +66,7 @@ const MILB_DIR = path.join(ROOT_DATA_DIR, 'milb');
 const TIMEOUT = 30000;
 const CONCURRENCY = 8;
 const MIN_PITCHES_FOR_ARSENAL = 5;   // suppress noise for pitchers with <5 pitches
+const MIN_BBE_FOR_LEAGUE_AVG = 10;   // hitters need >=10 BBE to count toward league avg
 
 const LEVELS = [
   { key: 'aaa', sportId: 11, leagueId: null, label: 'AAA' },
@@ -386,17 +387,43 @@ async function processLevel(level) {
   const bbeDir = path.join(MILB_DIR, level.key, 'bbe');
   if (!fs.existsSync(bbeDir)) fs.mkdirSync(bbeDir, { recursive: true });
   let bbeWritten = 0;
+  const allAggs = [];   // per-player aggregates feeding the league average
   for (const [pid, rec] of Object.entries(byBatter)) {
+    const agg = aggregateForBatter(rec.events);
     const data = {
       player_id: parseInt(pid, 10),
       name: rec.name,
       last_updated: new Date().toISOString(),
-      agg: aggregateForBatter(rec.events),
+      agg: agg,
       events: rec.events
     };
     fs.writeFileSync(path.join(bbeDir, pid + '.json'), JSON.stringify(data));
     bbeWritten++;
+    if (agg && agg.n >= MIN_BBE_FOR_LEAGUE_AVG) allAggs.push(agg);
   }
+  // ── League-average summary (consumed by the card QoC "vs Avg" column) ──
+  // Mean of each Quality-of-Contact metric across players with a meaningful
+  // batted-ball sample, written once per level so cards never aggregate
+  // client-side.
+  const LG_KEYS = ['avg_ev','max_ev','hard_hit_pct','barrel_pct','sweet_spot_pct',
+                   'avg_la','gb_pct','ld_pct','fb_pct','pu_pct',
+                   'pull_pct','center_pct','oppo_pct'];
+  const lgAvg = {};
+  for (const k of LG_KEYS) {
+    const vals = allAggs.map(a => a[k]).filter(v => v != null && !isNaN(v));
+    lgAvg[k] = vals.length ? +(vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(2) : null;
+  }
+  fs.writeFileSync(
+    path.join(MILB_DIR, level.key, 'bbe-league-avg.json'),
+    JSON.stringify({
+      last_updated: new Date().toISOString(),
+      season: SEASON,
+      level: level.label,
+      n_players: allAggs.length,
+      min_bbe: MIN_BBE_FOR_LEAGUE_AVG,
+      avg: lgAvg
+    })
+  );
   fs.writeFileSync(
     path.join(MILB_DIR, level.key, 'bbe-manifest.json'),
     JSON.stringify({
