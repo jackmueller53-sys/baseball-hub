@@ -59,17 +59,29 @@ function fmtPubFG(val) {
 
 function pitchMix(row) {
   var total = row.totalPitches || 1;
-  return '<div class="pitch-bar">' +
-    '<span class="pitch-bar-inner pitch-bar-fb" style="width:' + Math.round((row.fbPitches/total)*60) + 'px"></span>' +
-    '<span class="pitch-bar-inner pitch-bar-brk" style="width:' + Math.round((row.brkPitches/total)*60) + 'px"></span>' +
-    '<span class="pitch-bar-inner pitch-bar-off" style="width:' + Math.round((row.offPitches/total)*60) + 'px"></span>' +
+  var fbN = row.fbPitches || 0, brkN = row.brkPitches || 0, offN = row.offPitches || 0;
+  var pct = function (n) { return Math.round((n / total) * 100); };
+  var grade = function (g) { return (g == null || isNaN(g)) ? '--' : Math.round(g); };
+  // Rich hover tooltip — full pitch-group breakdown: count, usage%, Stuff+ grade.
+  var tip = 'PITCH MIX  (' + total + ' pitches)\n'
+    + 'Fastballs:  ' + fbN  + '  (' + pct(fbN)  + '%)   Stuff+ ' + grade(row.fb) + '\n'
+    + 'Breaking:   ' + brkN + '  (' + pct(brkN) + '%)   Stuff+ ' + grade(row.brk) + '\n'
+    + 'Offspeed:   ' + offN + '  (' + pct(offN) + '%)   Stuff+ ' + grade(row.off);
+  var w = 90;  // wider bar than before (was 60) for readability
+  return '<div class="pitch-bar" title="' + tip.replace(/"/g, '&quot;') + '">' +
+    '<span class="pitch-bar-inner pitch-bar-fb"  style="width:' + Math.round((fbN/total)*w)  + 'px"></span>' +
+    '<span class="pitch-bar-inner pitch-bar-brk" style="width:' + Math.round((brkN/total)*w) + 'px"></span>' +
+    '<span class="pitch-bar-inner pitch-bar-off" style="width:' + Math.round((offN/total)*w) + 'px"></span>' +
     '</div>';
 }
 
 function buildSeasonTabs() {
   var seasonSet = {};
   allRows.forEach(function(r) { seasonSet[r.season] = true; });
-  var seasons = Object.keys(seasonSet).map(Number).sort();
+  // Public site exposes 2026 only. Prior-season training data (2020-2025)
+  // stays in the underlying files but is not shown as a selectable year tab.
+  var seasons = Object.keys(seasonSet).map(Number).sort().filter(function(s){ return s === 2026; });
+  if (!seasons.length) seasons = [2026];
   var container = document.getElementById('sp-season-tabs');
   container.innerHTML = '';
   seasons.forEach(function(s) {
