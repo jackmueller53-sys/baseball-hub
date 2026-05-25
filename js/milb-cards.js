@@ -766,9 +766,7 @@ function pitcherVsTable(p, lg, pitchers, levelLabel, qualified) {
     { lbl: 'BB%',     key: 'bb_pct',  dir: -1, fmt: pct1 },
     { lbl: 'K-BB%',   key: 'kbb_pct', dir:  1, fmt: pct1 },
     { lbl: 'HR/9',    key: 'hr9',     dir: -1, fmt: fmt2 },
-    { lbl: 'xwOBA-A', key: 'xwoba_a', dir: -1, fmt: fmt3 },
-    { lbl: 'xBA-A',   key: 'xba_a',   dir: -1, fmt: fmt3 },
-    { lbl: 'xSLG-A',  key: 'xslg_a',  dir: -1, fmt: fmt3 }
+    { lbl: 'xwOBA-A', key: 'xwoba_a', dir: -1, fmt: fmt3 }
   ];
   var body = defs.map(function (d) {
     var pv = p[d.key];
