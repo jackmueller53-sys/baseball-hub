@@ -591,3 +591,32 @@
 /* Tighten BBP panel internal spacing so QoC table has room */
 .bbp-panel { gap: 10px; padding-bottom: 4px; }
 .bbp-section-lbl { margin-bottom: 4px; }
+
+
+/* ── Pitcher card — enhanced vs-AAA/FSL table (replaces Stat Line panel) ──── */
+.vt-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.vt-tbl thead th {
+  text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--fg2, #6b6b6b);
+  border-bottom: 1px solid rgba(45, 36, 24, 0.14); padding: 6px 8px;
+}
+.vt-tbl tbody td { padding: 7px 8px; border-bottom: 1px solid rgba(45, 36, 24, 0.06); }
+.vt-tbl tbody tr:last-child td { border-bottom: none; }
+.vt-metric { color: var(--fg, #2d2418); font-weight: 600; }
+.vt-val  { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--fg, #2d2418); }
+.vt-avg  { font-variant-numeric: tabular-nums; color: var(--fg2, #6b6b6b); }
+.vt-diff { font-variant-numeric: tabular-nums; font-weight: 700; }
+.vt-diff.diff-good { color: #047857; }
+.vt-diff.diff-bad  { color: #B91C1C; }
+.vt-pct { white-space: nowrap; }
+.vt-pct-track {
+  display: inline-block; width: 84px; height: 8px; border-radius: 4px;
+  background: rgba(45, 36, 24, 0.08); overflow: hidden;
+  vertical-align: middle; margin-right: 8px;
+}
+.vt-pct-fill { display: block; height: 100%; border-radius: 4px; }
+.vt-pct-fill.vt-hi  { background: #047857; }
+.vt-pct-fill.vt-mid { background: #C2842B; }
+.vt-pct-fill.vt-lo  { background: #B91C1C; }
+.vt-pct-num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--fg, #2d2418); }
+.vt-na { color: var(--fg2, #6b6b6b); }
