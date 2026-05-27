@@ -3,29 +3,47 @@ var allRows = [];
 var activeSeason = null;
 var sortCol = 'overall';
 var sortDir = 'desc';
+var _historyLoadPromise = null;
 
+function _mapHistoryRow(r) {
+  return {
+    pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
+    overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
+    totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
+    era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
+    kpct: r.kp, bbpct: r.bbp, kbbpct: r.kbb, war: r.war,
+    csw: r.csw, swstr: r.sws, ip: r.ip,
+    fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp,
+    apw: r.apw != null ? r.apw : null,
+    awr: r.awr != null ? r.awr : null,
+    _source: "custom_model"
+  };
+}
+
+// Async history loader. Resolves with true/false; safe to call repeatedly.
 function loadData() {
-  try {
-    if (typeof RAW_DATA === 'undefined') {
-      console.error('RAW_DATA not found');
+  if (_historyLoadPromise) return _historyLoadPromise;
+  // Back-compat: if a synchronous RAW_DATA global is still defined, prefer it.
+  if (typeof RAW_DATA !== 'undefined' && Array.isArray(RAW_DATA)) {
+    try {
+      allRows = RAW_DATA.map(_mapHistoryRow);
+      _historyLoadPromise = Promise.resolve(true);
+      return _historyLoadPromise;
+    } catch (e) { console.error('Load error:', e); }
+  }
+  _historyLoadPromise = fetch('data/stuffplus-history.json', { cache: 'default' })
+    .then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(function(rows){
+      allRows = rows.map(_mapHistoryRow);
+      return true;
+    })
+    .catch(function(e){
+      console.error('[loadData] history fetch failed:', e.message);
+      allRows = [];
+      _historyLoadPromise = null;
       return false;
-    }
-    allRows = RAW_DATA.map(function(r) {
-      return {
-        pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
-        overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
-        totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
-        era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
-        kpct: r.kp, bbpct: r.bbp, kbbpct: r.kbb, war: r.war,
-        csw: r.csw, swstr: r.sws, ip: r.ip,
-        fgStuff: r.fgs, fgLoc: r.fgl, fgPit: r.fgp,
-        apw: r.apw != null ? r.apw : null,   // avg predicted whiff probability (custom model)
-        awr: r.awr != null ? r.awr : null,   // actual whiff rate (custom model)
-        _source: "custom_model"               // flag: from custom XGBoost model
-      };
     });
-    return true;
-  } catch (e) { console.error('Load error:', e); return false; }
+  return _historyLoadPromise;
 }
 
 function gradeClass(val) {
@@ -637,10 +655,10 @@ async function load2026StuffPlusLive(){
   }
 }
 
-(function init() {
-  var ok = loadData();
+(async function init() {
+  var ok = await loadData();
   if (!ok) {
-    document.getElementById('loading').innerHTML = '<div class="error-msg">Could not load Stuff+ data. RAW_DATA is missing or corrupted.</div>';
+    document.getElementById('loading').innerHTML = '<div class="error-msg">Could not load Stuff+ data. History file is missing or corrupted.</div>';
     return;
   }
   buildSeasonTabs();

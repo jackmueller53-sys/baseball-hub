@@ -38,12 +38,13 @@ function switchApp(appId, btn) {
     } else if (typeof loadData === 'function') {
       // Fallback: if allRows is empty, try loading data again
       requestAnimationFrame(function(){
-        var ok = loadData();
-        if(ok){
-          buildSeasonTabs();
-          renderTable();
-          console.log('[switchApp] Stuff+ data reloaded on tab switch, allRows:', allRows.length);
-        }
+        Promise.resolve(loadData()).then(function(ok){
+          if(ok){
+            buildSeasonTabs();
+            renderTable();
+            console.log('[switchApp] Stuff+ data reloaded on tab switch, allRows:', allRows.length);
+          }
+        });
       });
     }
   }
