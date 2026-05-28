@@ -35,6 +35,20 @@ jobs:
           find data -maxdepth 1 -type f -name '*.json' -exec cp {} _site/data/ \;
           if [ -d data/milb ]; then cp -r data/milb _site/data/milb; fi
           du -sh _site
+          echo "── Pre-minify sizes ──"
+          du -sh _site/js _site/css
+      - name: Minify JS and CSS with esbuild
+        run: |
+          set -euo pipefail
+          # In-place per-file minification — preserves script tag order, no bundling.
+          for f in _site/js/*.js; do
+            npx --yes -p esbuild esbuild --minify --log-level=warning --allow-overwrite "$f" --outfile="$f"
+          done
+          for f in _site/css/*.css; do
+            npx --yes -p esbuild esbuild --minify --log-level=warning --allow-overwrite "$f" --outfile="$f"
+          done
+          echo "── Post-minify sizes ──"
+          du -sh _site/js _site/css
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
