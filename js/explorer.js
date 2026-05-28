@@ -485,6 +485,17 @@ function pct(v){
 // Strip all HTML tags to get plain text name
 function stripHTML(s){ return s ? String(s).replace(/<[^>]*>/g,"").trim() : ""; }
 
+// HTML-escape user/API-supplied strings before splicing into innerHTML.
+function escHTML(s){
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── STATCAST DATA FETCHING ──────────────────────────────────────────────────
 // Cache for fetched Statcast data
 const statcastCache = new Map();
@@ -892,10 +903,10 @@ function renderSearchResults(people){
     const typeClass = isPitcher ? "ps-type-p" : "ps-type-h";
     const typeLabel = isPitcher ? "Pitcher" : "Hitter";
     html += `<div class="ps-item" data-idx="${i}" onclick="selectSearchResult(${i})">
-      <div class="ps-avatar">${initials}</div>
+      <div class="ps-avatar">${escHTML(initials)}</div>
       <div>
-        <div class="ps-name">${p.fullName || "--"}</div>
-        <div class="ps-meta">${team} · ${pos} · Age ${p.currentAge || "--"}</div>
+        <div class="ps-name">${escHTML(p.fullName || "--")}</div>
+        <div class="ps-meta">${escHTML(team)} · ${escHTML(pos)} · Age ${escHTML(p.currentAge || "--")}</div>
       </div>
       <span class="ps-type ${typeClass}">${typeLabel}</span>
     </div>`;
@@ -3233,7 +3244,7 @@ async function loadLive2026(forceRefresh){
 function rebuildTeamDropdown(season){
   const src = season===2025 ? SEED_H25.concat(SEED_P25) : DB[2026].hitters.concat(DB[2026].pitchers);
   const teams = [...new Set(src.map(p=>p.team).filter(Boolean))].sort();
-  document.getElementById("tm-sel").innerHTML = ["All Teams",...teams].map(t=>"<option>"+t+"</option>").join("");
+  document.getElementById("tm-sel").innerHTML = ["All Teams",...teams].map(t=>"<option>"+escHTML(t)+"</option>").join("");
 }
 
 // ── AUTO-REFRESH (every 15min while on 2026 tab) ────────────────────────────
@@ -3490,8 +3501,12 @@ function drawScatter(data,xl,yl,xDir,yDir){
   const W=900,H=470,PAD={t:26,r:22,b:50,l:54};
   const IW=W-PAD.l-PAD.r, IH=H-PAD.t-PAD.b;
   const vld=data.filter(d=>d.cx!=null&&d.cy!=null);
+  // Accessible title/desc preserved across every render so screen readers
+  // always have a label even when render() rewrites svg.innerHTML.
+  const A11Y='<title id="svg-plot-title">Player scatter plot</title>'
+    +'<desc id="svg-plot-desc">Interactive scatter comparing the selected X and Y stats across MLB players. The leaderboard table below the chart contains the same data.</desc>';
   if(!vld.length){
-    svg.innerHTML="<text x=\""+(W/2)+"\" y=\""+(H/2)+"\" text-anchor=\"middle\" fill=\"#6b88aa\" "
+    svg.innerHTML=A11Y+"<text x=\""+(W/2)+"\" y=\""+(H/2)+"\" text-anchor=\"middle\" fill=\"#6b88aa\" "
       +"font-family=\"Barlow Condensed\" font-size=\"14\" letter-spacing=\"2\">NO DATA</text>";
     return;
   }
@@ -3590,7 +3605,7 @@ function drawScatter(data,xl,yl,xDir,yDir){
       +" onmouseover=\"this.setAttribute('r','"+(r+2)+"');this.style.fillOpacity='1'\""
       +" onmouseout=\"this.setAttribute('r','"+r+"');this.style.fillOpacity='.82'\" onclick=\"openPlayerCard(document.getElementById('svg-plot')._vld["+i+"], MODE).catch(e=>console.error('Card error:',e))\"/>";
   });
-  svg.innerHTML=h; svg._vld=vld; svg._xl=xl; svg._yl=yl;
+  svg.innerHTML=A11Y+h; svg._vld=vld; svg._xl=xl; svg._yl=yl;
 }
 
 // ── TOOLTIP ──────────────────────────────────────────────────────────────────

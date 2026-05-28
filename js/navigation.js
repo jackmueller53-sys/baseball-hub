@@ -2,9 +2,17 @@
    HUB NAVIGATION
    ══════════════════════════════════════════════════════════════════════════ */
 function switchApp(appId, btn) {
-  // Update tab buttons
-  document.querySelectorAll('.hub-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
+  // Update tab buttons + ARIA state
+  document.querySelectorAll('.hub-tab').forEach(function(t){
+    t.classList.remove('active');
+    t.setAttribute('aria-selected', 'false');
+    t.setAttribute('tabindex', '-1');
+  });
+  if (btn) {
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    btn.setAttribute('tabindex', '0');
+  }
 
   // Toggle sections
   document.querySelectorAll('.app-section').forEach(s => s.classList.remove('app-visible'));
@@ -50,3 +58,22 @@ function switchApp(appId, btn) {
   }
 }
 
+// Arrow-key navigation for the hub tablist (WAI-ARIA Authoring Practices).
+document.addEventListener('DOMContentLoaded', function(){
+  var nav = document.getElementById('hub-nav');
+  if (!nav) return;
+  nav.addEventListener('keydown', function(e){
+    var tabs = Array.prototype.slice.call(nav.querySelectorAll('[role="tab"]'));
+    var i = tabs.indexOf(document.activeElement);
+    if (i === -1) return;
+    var next = i;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    tabs[next].focus();
+    tabs[next].click();
+  });
+});

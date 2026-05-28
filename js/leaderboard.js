@@ -46,6 +46,17 @@ function loadData() {
   return _historyLoadPromise;
 }
 
+// HTML-escape externally sourced strings before string-building rows.
+function escHTML(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function gradeClass(val) {
   if (val == null) return 'nd';
   if (val >= 130) return 'g-80'; if (val >= 115) return 'g-70'; if (val >= 107) return 'g-60';
@@ -277,7 +288,7 @@ function renderTable() {
     var r = rows[i];
     h += '<tr style="cursor:pointer" onclick="openStuffPlayerCard('+i+')">';
     h += '<td class="rk">' + (i+1) + '</td>';
-    h += '<td class="nm">' + r.name + '<span class="team">' + (r.team||'') + '</span></td>';
+    h += '<td class="nm">' + escHTML(r.name) + '<span class="team">' + escHTML(r.team||'') + '</span></td>';
     h += '<td class="pub">' + r.totalPitches.toLocaleString() + '</td>';
     h += '<td class="sep"></td>';
     // Show custom model grade if available; for 2026 FG-only rows, show FG Stuff+ with 'fg' marker
