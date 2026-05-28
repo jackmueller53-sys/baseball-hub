@@ -946,13 +946,12 @@ def main(force_retrain: bool = False, verbose: bool = False):
     # Step 7: Save outputs
     # ─────────────────────────────────────────────────────────────────────────
 
-    # Save custom JSON (used by leaderboard.js as primary source)
+    # Save custom JSON (used by leaderboard.js as primary 2026 source).
+    # NOTE: historical seasons (2020-2025) live in data/stuffplus-history.json
+    # and are not rewritten by this script — they are a frozen archive.
     logger.info(f"Saving to {STUFFPLUS_JSON}...")
     with open(STUFFPLUS_JSON, 'w') as f:
         json.dump(raw_data_2026, f, separators=(',', ':'))
-
-    # Update js/data.js (merge 2026 into existing 2020-2025 data)
-    update_data_js(raw_data_2026, DATA_JS)
 
     # Save full CSV for reference / debugging
     csv_file = DATA_DIR / 'stuffplus-custom.csv'
@@ -962,7 +961,6 @@ def main(force_retrain: bool = False, verbose: bool = False):
     logger.info("=" * 80)
     logger.info("Pipeline complete!")
     logger.info(f"  Custom JSON: {STUFFPLUS_JSON} ({len(raw_data_2026)} pitchers)")
-    logger.info(f"  data.js:     {DATA_JS} (updated with {TARGET_SEASON} rows)")
     logger.info(f"  CSV:         {csv_file}")
     logger.info("=" * 80)
 

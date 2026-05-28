@@ -3,12 +3,33 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Baseball Hub — interactive scatter plot for any two MLB metrics, plus a custom XGBoost Stuff+ leaderboard. Data from FanGraphs and Baseball Savant.">
+<meta name="color-scheme" content="light dark">
+<!-- CSP: allow same-origin + the CDN scripts/fonts we use + FanGraphs/Savant
+     fetch destinations + the two CORS proxies. 'unsafe-inline' is needed
+     for current inline event handlers and styles; tighten further once
+     handlers are migrated to addEventListener. -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data: https:;
+  connect-src 'self' https://www.fangraphs.com https://baseballsavant.mlb.com https://statsapi.mlb.com https://corsproxy.io https://api.allorigins.win https://cdnjs.cloudflare.com;
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'none';
+">
 <title>Baseball Hub &mdash; Advanced Stats &amp; Stuff+ Leaderboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://www.fangraphs.com">
+<link rel="dns-prefetch" href="https://baseballsavant.mlb.com">
+<link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+<link rel="preload" as="fetch" href="data/stuffplus-history.json" type="application/json" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<script src="js/data.js"></script>
-<link rel="stylesheet" href="css/styles.css?v=20260416">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
+<link rel="stylesheet" href="css/styles.css?v=20260527">
 </head>
 <body>
 
@@ -41,12 +62,12 @@
       </div>
     </a>
     <div class="hub-divider"></div>
-    <nav class="hub-nav" id="hub-nav">
-      <button class="hub-tab active" data-app="explorer" onclick="switchApp('explorer',this)">
-        <span class="hub-tab-icon">&#128202;</span> Stats Explorer
+    <nav class="hub-nav" id="hub-nav" role="tablist" aria-label="Application sections">
+      <button class="hub-tab active" data-app="explorer" role="tab" aria-selected="true" aria-controls="app-explorer" id="tab-explorer" onclick="switchApp('explorer',this)">
+        <span class="hub-tab-icon" aria-hidden="true">&#128202;</span> Stats Explorer
       </button>
-      <button class="hub-tab" data-app="stuffplus" onclick="switchApp('stuffplus',this)">
-        <span class="hub-tab-icon">&#128300;</span> Stuff+ Leaderboard
+      <button class="hub-tab" data-app="stuffplus" role="tab" aria-selected="false" aria-controls="app-stuffplus" tabindex="-1" id="tab-stuffplus" onclick="switchApp('stuffplus',this)">
+        <span class="hub-tab-icon" aria-hidden="true">&#128300;</span> Stuff+ Leaderboard
       </button>
     </nav>
 
@@ -66,8 +87,8 @@
         <button class="ptab" id="ptab-pit" data-mode="pitchers" onclick="setModeBtn(this)">&#9918; Pitchers</button>
       </div>
       <div class="src-pills" style="flex-shrink:0">
-        <a class="src-pill pill-fg" href="https://www.fangraphs.com" target="_blank"><span class="pill-dot"></span>FanGraphs</a>
-        <a class="src-pill pill-sv" href="https://baseballsavant.mlb.com" target="_blank"><span class="pill-dot"></span>Savant</a>
+        <a class="src-pill pill-fg" href="https://www.fangraphs.com" target="_blank" rel="noopener noreferrer"><span class="pill-dot"></span>FanGraphs</a>
+        <a class="src-pill pill-sv" href="https://baseballsavant.mlb.com" target="_blank" rel="noopener noreferrer"><span class="pill-dot"></span>Savant</a>
       </div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
         <button class="refresh-btn" id="refresh-btn" onclick="manualRefresh()" title="Refresh 2026 data" style="display:none">&#8635;</button>
@@ -115,7 +136,8 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      APP: STATS EXPLORER
      ═══════════════════════════════════════════════════════════════════════════ -->
-<section id="app-explorer" class="app-section app-visible">
+<main id="app-main">
+<section id="app-explorer" class="app-section app-visible" role="tabpanel" aria-labelledby="tab-explorer">
   <div class="app-explorer-inner">
     <aside class="sidebar">
       <div class="card">
@@ -193,7 +215,7 @@
           </div>
           <div class="chart-src-row" id="c-src-row"></div>
         </div>
-        <div class="chart-body"><svg class="scatter" id="svg-plot" viewBox="0 0 900 470"></svg></div>
+        <div class="chart-body"><svg class="scatter" id="svg-plot" viewBox="0 0 900 470" role="img" aria-labelledby="svg-plot-title svg-plot-desc"><title id="svg-plot-title">Player scatter plot</title><desc id="svg-plot-desc">Interactive scatter comparing the selected X and Y stats across MLB players. Hover or click a dot for details. The leaderboard table below the chart contains the same data.</desc></svg></div>
         <div class="chart-footer">
           <div class="toggle-row" onclick="togNames()" style="cursor:pointer;gap:7px">
             <div class="tog" id="tog-n2" style="flex-shrink:0"></div>
@@ -223,10 +245,10 @@
         <div class="ft">Data Sources</div>
         <div class="fi"><span class="fb fb-fg">FanGraphs</span>
           <div class="fn">wRC+, WAR, wOBA, FIP, xFIP, K%, BB%, SwStr%, BABIP, ISO, GB%, LOB%<br>
-            <a href="https://www.fangraphs.com/leaders/major-league" target="_blank">fangraphs.com</a> &mdash; Major League Leaderboards API</div></div>
+            <a href="https://www.fangraphs.com/leaders/major-league" target="_blank" rel="noopener noreferrer">fangraphs.com</a> &mdash; Major League Leaderboards API</div></div>
         <div class="fi"><span class="fb fb-sv">Savant</span>
           <div class="fn">xwOBA, xBA, xSLG, xERA, Barrel%, Avg EV, Hard Hit%, Whiff%, Sprint Speed<br>
-            <a href="https://baseballsavant.mlb.com" target="_blank">baseballsavant.mlb.com</a> &mdash; Expected Stats &amp; Sprint Speed leaderboards</div></div>
+            <a href="https://baseballsavant.mlb.com" target="_blank" rel="noopener noreferrer">baseballsavant.mlb.com</a> &mdash; Expected Stats &amp; Sprint Speed leaderboards</div></div>
       </div>
       <div>
         <div class="ft">Methodology</div>
@@ -242,8 +264,8 @@
       </div>
       <div>
         <div class="ft">Disclaimer</div>
-        <div class="fn">All statistics &copy; <a href="https://www.fangraphs.com" target="_blank">FanGraphs LLC</a>
-          and <a href="https://www.mlb.com" target="_blank">MLB Advanced Media, L.P.</a><br>
+        <div class="fn">All statistics &copy; <a href="https://www.fangraphs.com" target="_blank" rel="noopener noreferrer">FanGraphs LLC</a>
+          and <a href="https://www.mlb.com" target="_blank" rel="noopener noreferrer">MLB Advanced Media, L.P.</a><br>
           For personal and educational use only.
         </div>
       </div>
@@ -254,7 +276,7 @@
 <!-- ═══════════════════════════════════════════════════════════════════════════
      APP: STUFF+ LEADERBOARD
      ═══════════════════════════════════════════════════════════════════════════ -->
-<section id="app-stuffplus" class="app-section">
+<section id="app-stuffplus" class="app-section" role="tabpanel" aria-labelledby="tab-stuffplus">
   <div class="sp-app">
     <div class="controls">
       <div class="srch-wrap-sp">
@@ -327,14 +349,15 @@
     </div>
   </div>
 </section>
+</main>
 
 </div><!-- /.page -->
 
 
-<script src="js/navigation.js"></script>
-<script src="js/explorer.js"></script>
-<script src="js/leaderboard.js?v=20260417"></script>
-<script src="js/init.js"></script>
-<script src="js/milb-nav-inject.js"></script>
+<script src="js/navigation.js" defer></script>
+<script src="js/explorer.js" defer></script>
+<script src="js/leaderboard.js?v=20260527" defer></script>
+<script src="js/init.js?v=20260527" defer></script>
+<script src="js/milb-nav-inject.js" defer></script>
 </body>
 </html>

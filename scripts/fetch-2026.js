@@ -240,10 +240,10 @@ async function main() {
   try { results.fgPit = await fetchFG('pit', thresholds.fgQualPit, 8); }
   catch (e) { errors.push(`FG pit: ${e.message}`); results.fgPit = []; console.error(`    ERROR: ${e.message}`); }
 
-  // ── FanGraphs Plate Discipline Batting (type=7) ──
-  console.log('\n[3/8] FanGraphs Plate Discipline (Batting)');
-  try { results.fgDiscBat = await fetchFG('bat', thresholds.fgQualBat, 7); }
-  catch (e) { errors.push(`FG disc bat: ${e.message}`); results.fgDiscBat = []; console.error(`    ERROR: ${e.message}`); }
+  // NOTE: FG plate-discipline batting (type=7) historically returns the same
+  // payload as type=8 for our use case, and no client code reads the resulting
+  // file. Skipping the fetch + write saves ~3 MB per cron run.
+  results.fgDiscBat = [];
 
   // ── FanGraphs Plate Discipline Pitching (type=7) ──
   console.log('\n[4/8] FanGraphs Plate Discipline (Pitching)');
@@ -274,9 +274,23 @@ async function main() {
   console.log('\n── Saving data files ──');
   saveJSON('fg-bat.json', results.fgBat);
   saveJSON('fg-pit.json', results.fgPit);
-  saveJSON('fg-disc-bat.json', results.fgDiscBat);
   saveJSON('fg-disc-pit.json', results.fgDiscPit);
-  saveJSON('fg-stuffplus.json', results.fgStuffPlus);
+  // Slim fg-stuffplus.json to only the ~22 fields the client + python model read.
+  // Full FG payload is ~400 cols × 636 rows ≈ 6.4 MB; slim is ~400 KB.
+  const FG_STUFFPLUS_KEEP = new Set([
+    'xMLBAMID', 'playerid',
+    'Name', 'PlayerName', 'Team', 'TeamNameAbb', 'Season',
+    'Pitches', 'IP',
+    'ERA', 'FIP', 'xFIP', 'xERA', 'WAR',
+    'K%', 'BB%', 'K-BB%', 'SwStr%', 'C+SwStr%',
+    'sp_stuff', 'sp_location', 'sp_pitching',
+  ]);
+  const slimStuffPlus = (results.fgStuffPlus || []).map(function(row) {
+    const out = {};
+    for (const k of FG_STUFFPLUS_KEEP) if (k in row) out[k] = row[k];
+    return out;
+  });
+  saveJSON('fg-stuffplus.json', slimStuffPlus);
   saveJSON('sv-bat.json', results.svBat);
   saveJSON('sv-pit.json', results.svPit);
   saveJSON('sv-sprint.json', results.svSprint);

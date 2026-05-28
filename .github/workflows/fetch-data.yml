@@ -39,7 +39,7 @@ jobs:
       - name: Check for data changes
         id: check
         run: |
-          git add data/ js/data.js
+          git add data/
           if git diff --cached --quiet; then
             echo "changed=false" >> $GITHUB_OUTPUT
             echo "No data changes detected"
