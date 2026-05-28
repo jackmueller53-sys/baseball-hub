@@ -104,16 +104,23 @@ function showBar(v){
 // back through CORS proxies. This is faster and more reliable than always
 // going through a third-party proxy service.
 
+// Two-proxy chain — the previous 5-proxy list included unreliable/HTTP-only
+// services (thingproxy, codetabs) and a redundant allorigins JSON-wrapper.
+// Keep the two with the best track record + valid TLS; rely on the static
+// data/*.json snapshot (refreshed daily by GitHub Actions) as the primary path.
 const PROXIES = [
-  { name:"corsproxy.io",    url: u => "https://corsproxy.io/?"+encodeURIComponent(u) },
-  { name:"allorigins",      url: u => "https://api.allorigins.win/raw?url="+encodeURIComponent(u) },
-  { name:"thingproxy",      url: u => "https://thingproxy.freeboard.io/fetch/"+u },
-  { name:"codetabs",        url: u => "https://api.codetabs.com/v1/proxy?quest="+encodeURIComponent(u) },
-  { name:"allorigins-json", url: u => "https://api.allorigins.win/get?url="+encodeURIComponent(u) },
+  { name:"corsproxy.io", url: u => "https://corsproxy.io/?"+encodeURIComponent(u) },
+  { name:"allorigins",   url: u => "https://api.allorigins.win/raw?url="+encodeURIComponent(u) },
 ];
 let _proxyIdx = 0;   // start with first proxy, rotate on failure
 let _proxyFails = {}; // track consecutive failures per proxy
+let _proxyOk = {};   // track successes for telemetry
 let _directWorks = null; // null=untested, true/false=tested
+
+// Expose proxy telemetry for debugging / quick health checks.
+window.__proxyTelemetry = function(){
+  return { fails: { ..._proxyFails }, ok: { ..._proxyOk }, directWorks: _directWorks };
+};
 
 // Detect if we're running from file:// or a hosted server (local or cloud)
 const _isFileProtocol = location.protocol === 'file:';
@@ -184,6 +191,7 @@ async function proxyFetch(url, retries=2){
       clearTimeout(timeout);
       if(!r.ok) throw new Error("HTTP "+r.status);
       _proxyFails[proxy.name] = 0; // reset fail count on success
+      _proxyOk[proxy.name] = (_proxyOk[proxy.name]||0) + 1;
       console.log(`[fetch] Proxy ${proxy.name} success: ${url.slice(0,80)}...`);
       return r;
     } catch(e){
@@ -3038,6 +3046,15 @@ async function loadStaticData2026(){
     setProg(19, "Loading static Savant sprint...");
     spd = await fetchStaticFile("sv-sprint.json") || [];
 
+    // Record snapshot age for the background-refresh gate.
+    try {
+      const meta = await fetchStaticFile("meta.json");
+      if (meta && meta.fetchedAt) {
+        const fetchedAt = Date.parse(meta.fetchedAt);
+        if (!isNaN(fetchedAt)) DB[2026]._snapshotFetchedAt = fetchedAt;
+      }
+    } catch(_) { /* meta is best-effort */ }
+
     // If we got at least FG batting or pitching data, merge and store
     if(fgBat.length > 0 || fgPit.length > 0){
       setProg(25, "Merging static datasets...");
@@ -3246,6 +3263,18 @@ function manualRefresh(){
 // Does not display progress bar or block UI, only logs errors if they occur
 async function refreshLiveDataInBackground(){
   if(_fetching26) return;
+
+  // Skip the live refresh when our static snapshot is fresh enough.
+  // GitHub Actions writes data/*.json + meta.json daily; if the snapshot is
+  // less than 6h old there is no value in hammering CORS proxies.
+  const STATIC_FRESH_MS = 6 * 60 * 60 * 1000;
+  const snapAt = DB[2026] && DB[2026]._snapshotFetchedAt;
+  if (snapAt && (Date.now() - snapAt) < STATIC_FRESH_MS) {
+    console.log("[refreshLiveDataInBackground] Static snapshot is fresh (age "
+      + Math.round((Date.now()-snapAt)/60000) + "m); skipping live refresh.");
+    return;
+  }
+
   _fetching26 = true;
 
   const { fgQualBat, fgQualPit, svMin, minAB, minIP } = getSeasonThresholds();
