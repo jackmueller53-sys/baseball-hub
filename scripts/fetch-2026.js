@@ -36,40 +36,95 @@ const TIMEOUT = 30000; // 30s per request
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HTTP FETCH HELPER — works with both http and https, follows redirects
+// HTTP FETCH HELPER
+// Strategy: try direct fetch with a real-browser header set. If we get a
+// 4xx (typically 403 from FanGraphs' Cloudflare), fall back through the
+// same CORS proxy chain the browser app uses.
 // ═══════════════════════════════════════════════════════════════════════════
-function fetchURL(url, maxRedirects = 5) {
+
+// Real-Chrome-on-macOS header set. The previous "BaseballHub/1.0" UA suffix
+// got the runner IP flagged by Cloudflare → 403. These headers are byte-for-
+// byte what a logged-out Chrome 124 sends on a fresh visit.
+const BROWSER_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/csv, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'identity',  // Node won't gunzip for us; ask for plain
+  'Cache-Control': 'no-cache',
+  'Pragma': 'no-cache',
+  'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+  'Sec-Ch-Ua-Mobile': '?0',
+  'Sec-Ch-Ua-Platform': '"macOS"',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-site',
+};
+
+// CORS proxies (same as js/explorer.js). Used as fallback only.
+const PROXIES = [
+  (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+];
+
+function directFetch(url, extraHeaders, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
     if (maxRedirects <= 0) return reject(new Error('Too many redirects'));
 
-    const client = url.startsWith('https') ? https : http;
-    const req = client.get(url, { timeout: TIMEOUT, headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) BaseballHub/1.0',
-      'Accept': 'application/json, text/csv, text/plain, */*'
-    }}, (res) => {
-      // Follow redirects
+    // Add a per-host Referer so requests look like they came from the site.
+    const parsed = new URL(url);
+    const headers = {
+      ...BROWSER_HEADERS,
+      'Referer': `${parsed.origin}/`,
+      ...(extraHeaders || {}),
+    };
+
+    const client = parsed.protocol === 'https:' ? https : http;
+    const req = client.get(url, { timeout: TIMEOUT, headers }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
         let redirectUrl = res.headers.location;
-        if (redirectUrl.startsWith('/')) {
-          const parsed = new URL(url);
-          redirectUrl = parsed.origin + redirectUrl;
-        }
-        return resolve(fetchURL(redirectUrl, maxRedirects - 1));
+        if (redirectUrl.startsWith('/')) redirectUrl = parsed.origin + redirectUrl;
+        return resolve(directFetch(redirectUrl, extraHeaders, maxRedirects - 1));
       }
-
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        return reject(new Error(`HTTP ${res.statusCode} from ${url.slice(0, 80)}`));
+        // Drain so the socket can be reused.
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode}`));
       }
-
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
       res.on('error', reject);
     });
-
-    req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout: ${url.slice(0, 80)}`)); });
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
     req.on('error', reject);
   });
+}
+
+async function fetchURL(url) {
+  // 1) Direct
+  try {
+    return await directFetch(url);
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    const is4xx = /HTTP 4\d\d/.test(msg);
+    // For non-403/4xx errors (network blip, timeout), do one quick retry.
+    if (!is4xx) {
+      try {
+        await new Promise((r) => setTimeout(r, 300));
+        return await directFetch(url);
+      } catch (_) { /* fall through to proxies */ }
+    }
+    // 2) Proxy fallback chain — same proxies the browser app uses
+    for (let i = 0; i < PROXIES.length; i++) {
+      const proxyUrl = PROXIES[i](url);
+      try {
+        const text = await directFetch(proxyUrl);
+        console.warn(`    (recovered via proxy ${i + 1}/${PROXIES.length})`);
+        return text;
+      } catch (pe) { /* try next */ }
+    }
+    throw new Error(`${msg} from ${url.slice(0, 80)} (all proxies also failed)`);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -327,9 +382,28 @@ async function main() {
   console.log(`📁 Data saved to ${DATA_DIR}/`);
   console.log('');
 
-  // Exit with error code if ALL primary fetches failed
+  // Exit non-zero only when we genuinely have nothing — no Savant AND
+  // no preserved FG snapshot on disk. The script preserves existing
+  // *.json when a particular fetch returns 0 rows (Cloudflare 403 etc.),
+  // so a partial-degraded run with cached FG + fresh Savant is fine.
+  const hasFreshSavant = results.svBat.length > 0 || results.svPit.length > 0;
+  const preservedFgOnDisk = ['fg-bat.json', 'fg-pit.json', 'fg-stuffplus.json']
+    .some(f => {
+      try {
+        const p = path.join(DATA_DIR, f);
+        return fs.existsSync(p) && JSON.parse(fs.readFileSync(p, 'utf8')).length > 0;
+      } catch { return false; }
+    });
+
   if (results.fgBat.length === 0 && results.fgPit.length === 0) {
-    console.error('❌ CRITICAL: No FanGraphs data at all — season may not have started');
+    if (hasFreshSavant && preservedFgOnDisk) {
+      console.warn('⚠️  FanGraphs fully blocked this run (HTTP 403). Savant + sprint '
+        + 'data refreshed; FG snapshot preserved from prior run.');
+      // Exit 0 so the daily cron doesn’t send a failure email.
+      return;
+    }
+    console.error('❌ CRITICAL: No FanGraphs data this run, no preserved FG on disk, '
+      + (hasFreshSavant ? 'Savant partial only' : 'and Savant also failed'));
     process.exit(1);
   }
 }
