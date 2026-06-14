@@ -171,6 +171,14 @@ async function fetchGameData(gamePk, gameDate) {
   const url = 'https://statsapi.mlb.com/api/v1.1/game/' + gamePk + '/feed/live';
   const json = await fetchJSON(url);
   const allPlays = (json.liveData && json.liveData.plays && json.liveData.plays.allPlays) || [];
+  // gameData.players holds pitchHand per player — pitcher matchup objects
+  // often omit it. Build a quick id → code map.
+  const gamePlayers = (json.gameData && json.gameData.players) || {};
+  const pitchHandByPid = {};
+  for (const k of Object.keys(gamePlayers)) {
+    const ph = gamePlayers[k].pitchHand;
+    if (ph && ph.code) pitchHandByPid[gamePlayers[k].id] = ph.code;
+  }
   const bbe = [];
   const pitches = [];
   for (const play of allPlays) {
@@ -232,11 +240,12 @@ async function fetchGameData(gamePk, gameDate) {
       const isSwing  = isInPlay || isFoul || isWhiff;
       // Last pitch of an AB? Only the final pitch should count for put-away
       const isLastPitchOfPA = (pi === playEvents.length - 1) || playEvents.slice(pi + 1).every(p2 => !p2.details || !p2.details.type);
-      // Movement data — Stats API gives pfxX / pfxZ in FEET, catcher's
-      // perspective. Stored raw; aggregateArsenal flips to pitcher's view
-      // and converts to inches.
+      // Movement data — MLB Stats API gives pfxX / pfxZ already in INCHES
+      // (catcher's perspective). aggregateArsenal flips pfx_x sign for the
+      // pitcher's perspective; no unit conversion.
       const pCoord = pd.coordinates || {};
-      const throwsCode = (pitcher.pitchHand && pitcher.pitchHand.code) || null;
+      const throwsCode = (pitcher.pitchHand && pitcher.pitchHand.code)
+        || pitchHandByPid[pitcher.id] || null;
       pitches.push({
         pitcher_id: pitcher.id,
         pitcher_name: pitcher.fullName || '',
@@ -352,12 +361,12 @@ function aggregateArsenal(pitches) {
   const arsenal = Object.values(byCode)
     .filter(r => r.n >= 1)
     .map(r => {
-      // Movement: convert ft -> in (×12), flip pfx_x sign so + = arm side
-      // (matches the MLB pitcher card convention).
+      // Movement: pfx_x / pfx_z already in INCHES (catcher's perspective).
+      // Flip pfx_x sign so + = arm side (pitcher's perspective convention).
       let avg_hb_in = null, avg_ivb_in = null, sd_hb_in = null, sd_ivb_in = null, n_mov = 0;
       if (r.hbVals.length >= 3) {
-        const hbIn = r.hbVals.map(v => -v * 12);   // flip + convert
-        const vbIn = r.vbVals.map(v =>  v * 12);
+        const hbIn = r.hbVals.map(v => -v);   // flip sign only — already inches
+        const vbIn = r.vbVals.slice();
         const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
         const sd   = (a, m) => Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length);
         avg_hb_in  = +mean(hbIn).toFixed(2);
