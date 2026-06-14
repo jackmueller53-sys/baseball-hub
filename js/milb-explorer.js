@@ -94,9 +94,8 @@ var P_TIP = [
   { k: 'era',      lbl: 'ERA',    f: function (v) { return v == null ? '--' : v.toFixed(2); } },
   { k: 'fip',      lbl: 'FIP',    f: function (v) { return v == null ? '--' : v.toFixed(2); } },
   { k: 'whip',     lbl: 'WHIP',   f: function (v) { return v == null ? '--' : v.toFixed(2); } },
-  { k: 'k9',       lbl: 'K/9',    f: function (v) { return v == null ? '--' : v.toFixed(1); } },
-  { k: 'bb9',      lbl: 'BB/9',   f: function (v) { return v == null ? '--' : v.toFixed(1); } },
-  { k: 'k_pct',    lbl: 'K%',     f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
+  { k: 'k_pct',    lbl: 'K%',     f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } },
+  { k: 'bb_pct',   lbl: 'BB%',    f: function (v) { return v == null ? '--' : v.toFixed(1) + '%'; } }
 ];
 
 function axes()    { return MODE === 'hitters' ? H_AXES_ALL : P_AXES_ALL; }
