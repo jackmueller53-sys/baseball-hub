@@ -1,0 +1,519 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   TEAMS DASHBOARD — Stats Explorer sub-mode
+   ──────────────────────────────────────────────────────────────────────────
+   Adds a third "Teams" button beside Hitters / Pitchers inside the existing
+   Stats Explorer tab. When active:
+     • The player chart/table cards are hidden.
+     • A team-level scatter renders into #svg-teams (30 dots, one per team).
+     • A team-cards grid renders below — click any dot or card for a roster
+       breakdown (lineup, rotation, key relievers).
+   Reads data/fg-bat.json + data/fg-pit.json directly — no dependency on
+   explorer.js internals beyond toggling DOM visibility.
+   ══════════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+
+  // ── State ──
+  let _bat = [], _pit = [];
+  let _teams = [];                  // aggregated team rows
+  let _xKey = 'wrcPlus', _yKey = 'eraMinus';
+  let _loaded = false, _loading = null;
+
+  // ── Helpers ──
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s == null ? '' : String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const stripHTML = (s) => s ? String(s).replace(/<[^>]*>/g, '').trim() : '';
+  const num = (v) => { const n = parseFloat(v); return isFinite(n) ? n : null; };
+  const TEAM_NAME = {
+    ARI: 'Diamondbacks', ATH: 'Athletics', ATL: 'Braves', BAL: 'Orioles',
+    BOS: 'Red Sox', CHC: 'Cubs', CHW: 'White Sox', CWS: 'White Sox',
+    CIN: 'Reds', CLE: 'Guardians', COL: 'Rockies', DET: 'Tigers',
+    HOU: 'Astros', KC: 'Royals', KCR: 'Royals', LAA: 'Angels', LAD: 'Dodgers',
+    MIA: 'Marlins', MIL: 'Brewers', MIN: 'Twins', NYM: 'Mets', NYY: 'Yankees',
+    OAK: 'Athletics', PHI: 'Phillies', PIT: 'Pirates', SD: 'Padres',
+    SDP: 'Padres', SEA: 'Mariners', SF: 'Giants', SFG: 'Giants',
+    STL: 'Cardinals', TB: 'Rays', TBR: 'Rays', TEX: 'Rangers',
+    TOR: 'Blue Jays', WSN: 'Nationals', WSH: 'Nationals',
+  };
+
+  // Axis catalog
+  const AXES = [
+    { k:'wrcPlus',   lbl:'Team wRC+',      side:'b', d:'Weighted Runs Created+ (100 = lg avg)',     dir:1  },
+    { k:'wOBA',      lbl:'Team wOBA',      side:'b', d:'Weighted On-Base Average',                  dir:1  },
+    { k:'avg',       lbl:'Team AVG',       side:'b', d:'Batting average',                           dir:1  },
+    { k:'obp',       lbl:'Team OBP',       side:'b', d:'On-base percentage',                        dir:1  },
+    { k:'slg',       lbl:'Team SLG',       side:'b', d:'Slugging percentage',                       dir:1  },
+    { k:'iso',       lbl:'Team ISO',       side:'b', d:'Isolated Power (SLG - AVG)',                dir:1  },
+    { k:'hr',        lbl:'Team HR',        side:'b', d:'Total home runs',                           dir:1  },
+    { k:'bbPct',     lbl:'Off BB%',        side:'b', d:'Walk rate, offense',                        dir:1  },
+    { k:'kPct',      lbl:'Off K%',         side:'b', d:'Strikeout rate, offense',                   dir:-1 },
+    { k:'sb',        lbl:'Team SB',        side:'b', d:'Stolen bases',                              dir:1  },
+    { k:'batWAR',    lbl:'Bat WAR',        side:'b', d:'Position-player WAR (sum)',                 dir:1  },
+    { k:'era',       lbl:'Team ERA',       side:'p', d:'Earned Run Average',                        dir:-1 },
+    { k:'fip',       lbl:'Team FIP',       side:'p', d:'Fielding Independent Pitching',             dir:-1 },
+    { k:'xFIP',      lbl:'Team xFIP',      side:'p', d:'Expected FIP',                              dir:-1 },
+    { k:'whip',      lbl:'Team WHIP',      side:'p', d:'Walks + Hits per IP',                       dir:-1 },
+    { k:'kPctP',     lbl:'Pit K%',         side:'p', d:'Strikeout rate, pitching',                  dir:1  },
+    { k:'bbPctP',    lbl:'Pit BB%',        side:'p', d:'Walk rate, pitching',                       dir:-1 },
+    { k:'pitWAR',    lbl:'Pit WAR',        side:'p', d:'Pitching WAR (sum)',                        dir:1  },
+    { k:'eraMinus',  lbl:'ERA−',           side:'p', d:'ERA scaled (100 = avg; lower is better)',   dir:-1 },
+    { k:'wrcMinus',  lbl:'wRC+ allowed*',  side:'p', d:'Estimated wRC+ allowed (FIP-derived proxy)', dir:-1 },
+    { k:'runDiff',   lbl:'Run Differential', side:'t', d:'Bat WAR − Pit WAR (lite proxy)',          dir:1  },
+  ];
+  function axBy(k) { return AXES.find(a => a.k === k) || AXES[0]; }
+
+  // ── Data load ──
+  async function load() {
+    if (_loaded) return;
+    if (_loading) return _loading;
+    _loading = (async () => {
+      try {
+        // Prefer fg-pit-all.json (qual=0; includes relievers). Fall back to
+        // qualified fg-pit.json when the all-pitchers file isn't on disk yet.
+        async function loadPit() {
+          try {
+            const r = await fetch('data/fg-pit-all.json');
+            if (r.ok) return r.json();
+          } catch (_) {}
+          return fetch('data/fg-pit.json').then(r => r.json());
+        }
+        const [bat, pit] = await Promise.all([
+          fetch('data/fg-bat.json').then(r => r.json()),
+          loadPit(),
+        ]);
+        _bat = (Array.isArray(bat) ? bat : []).map((r) => ({
+          ...r,
+          PlayerName: stripHTML(r.PlayerName || r.Name),
+          Team:       stripHTML(r.TeamNameAbb || r.Team || ''),
+        }));
+        _pit = (Array.isArray(pit) ? pit : []).map((r) => ({
+          ...r,
+          PlayerName: stripHTML(r.PlayerName || r.Name),
+          Team:       stripHTML(r.TeamNameAbb || r.Team || ''),
+        }));
+        aggregate();
+        _loaded = true;
+      } catch (e) {
+        console.error('[teams] data load failed', e);
+      }
+    })();
+    return _loading;
+  }
+
+  // ── Aggregate to 30 teams ──
+  function aggregate() {
+    const byTeam = new Map();
+    for (const r of _bat) {
+      const t = r.Team; if (!t || t.length > 4) continue;
+      if (!byTeam.has(t)) byTeam.set(t, { team: t, bat: [], pit: [] });
+      byTeam.get(t).bat.push(r);
+    }
+    for (const r of _pit) {
+      const t = r.Team; if (!t || t.length > 4) continue;
+      if (!byTeam.has(t)) byTeam.set(t, { team: t, bat: [], pit: [] });
+      byTeam.get(t).pit.push(r);
+    }
+    _teams = [...byTeam.values()].map(buildTeamRow).filter(Boolean);
+  }
+
+  function weightedMean(rows, valueKey, weightKey) {
+    let n = 0, d = 0;
+    for (const r of rows) {
+      const v = num(r[valueKey]); const w = num(r[weightKey]);
+      if (v != null && w != null && w > 0) { n += v * w; d += w; }
+    }
+    return d > 0 ? n / d : null;
+  }
+  function sumOf(rows, k) {
+    let s = 0;
+    for (const r of rows) { const v = num(r[k]); if (v != null) s += v; }
+    return s;
+  }
+
+  function buildTeamRow(t) {
+    const bat = t.bat, pit = t.pit;
+    if (!bat.length && !pit.length) return null;
+
+    // ── Offense ──
+    const totalPA = sumOf(bat, 'PA');
+    const totalAB = sumOf(bat, 'AB');
+    const wrcPlus = weightedMean(bat, 'wRC+', 'PA');
+    const wOBA    = weightedMean(bat, 'wOBA', 'PA');
+    const avg     = weightedMean(bat, 'AVG', 'AB');
+    const obp     = weightedMean(bat, 'OBP', 'PA');
+    const slg     = weightedMean(bat, 'SLG', 'AB');
+    const iso     = (slg != null && avg != null) ? slg - avg : null;
+    const hr      = sumOf(bat, 'HR');
+    const sb      = sumOf(bat, 'SB');
+    const batWAR  = sumOf(bat, 'WAR');
+    const kPct    = weightedMean(bat, 'K%', 'PA');
+    const bbPct   = weightedMean(bat, 'BB%', 'PA');
+
+    // ── Pitching ──
+    const totalIP = sumOf(pit, 'IP');
+    const era     = weightedMean(pit, 'ERA', 'IP');
+    const fip     = weightedMean(pit, 'FIP', 'IP');
+    const xFIP    = weightedMean(pit, 'xFIP', 'IP');
+    const whip    = weightedMean(pit, 'WHIP', 'IP');
+    const kPctP   = weightedMean(pit, 'K%', 'IP');
+    const bbPctP  = weightedMean(pit, 'BB%', 'IP');
+    const pitWAR  = sumOf(pit, 'WAR');
+
+    // Rough ERA- proxy (relative to league avg ~4.20 for 2026, recalculated below globally)
+    const eraMinus = era != null ? Math.round((era / 4.20) * 100) : null;
+    const wrcMinus = fip != null ? Math.round((fip / 4.20) * 100) : null;
+    const runDiff  = (batWAR != null && pitWAR != null) ? batWAR - pitWAR : null;
+
+    return {
+      team: t.team,
+      teamName: TEAM_NAME[t.team] || t.team,
+      _bat: bat, _pit: pit,
+      totalPA, totalAB, totalIP,
+      n_bat: bat.length, n_pit: pit.length,
+      wrcPlus, wOBA, avg, obp, slg, iso, hr, sb, batWAR, kPct, bbPct,
+      era, fip, xFIP, whip, kPctP, bbPctP, pitWAR, eraMinus, wrcMinus,
+      runDiff,
+    };
+  }
+
+  // ── Roster picks ──
+  function lineup(team) {
+    return team._bat.slice().sort((a, b) => (b.PA || 0) - (a.PA || 0)).slice(0, 9);
+  }
+  function rotation(team) {
+    return team._pit.slice()
+      .filter(p => (p.GS || 0) > 0)
+      .sort((a, b) => (b.GS || 0) - (a.GS || 0))
+      .slice(0, 5);
+  }
+  function keyRelievers(team) {
+    const relievers = team._pit.filter(p => {
+      const g = p.G || 0, gs = p.GS || 0;
+      return g > 0 && (gs / g) < 0.5;
+    });
+    if (relievers.length === 0) return [];
+    const out = [];
+    const ipLeader = relievers.slice().sort((a, b) => (b.IP || 0) - (a.IP || 0))[0];
+    if (ipLeader) out.push({ ...ipLeader, _label: 'IP leader' });
+    const svLeader = relievers.slice().sort((a, b) => (b.SV || 0) - (a.SV || 0))[0];
+    if (svLeader && (svLeader.SV || 0) > 0 && svLeader.PlayerName !== ipLeader.PlayerName) {
+      out.push({ ...svLeader, _label: 'SV leader' });
+    } else if (!svLeader || (svLeader.SV || 0) === 0) {
+      // No saves yet — pick the highest-K reliever as the de-facto closer
+      const kLeader = relievers.slice()
+        .filter(r => r.PlayerName !== ipLeader.PlayerName)
+        .sort((a, b) => (num(b['K%']) || 0) - (num(a['K%']) || 0))[0];
+      if (kLeader) out.push({ ...kLeader, _label: 'highest K%' });
+    }
+    return out;
+  }
+
+  // ── Scatter render ──
+  function renderScatter() {
+    const svg = $('svg-teams'); if (!svg) return;
+    const W = 900, H = 470, PAD = { t: 26, r: 22, b: 50, l: 54 };
+    const IW = W - PAD.l - PAD.r, IH = H - PAD.t - PAD.b;
+    const xA = axBy(_xKey), yA = axBy(_yKey);
+    const pts = _teams.map(t => ({ t, x: num(t[_xKey]), y: num(t[_yKey]) }))
+      .filter(p => p.x != null && p.y != null);
+    if (pts.length === 0) {
+      svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="#6b88aa"
+        font-family="Barlow Condensed" font-size="14" letter-spacing="2">NO DATA</text>`;
+      return;
+    }
+    const xVals = pts.map(p => p.x), yVals = pts.map(p => p.y);
+    const xMin = Math.min(...xVals), xMax = Math.max(...xVals);
+    const yMin = Math.min(...yVals), yMax = Math.max(...yVals);
+    const xPad = (xMax - xMin) * 0.08 || 1, yPad = (yMax - yMin) * 0.08 || 1;
+    const xLo = xMin - xPad, xHi = xMax + xPad;
+    const yLo = yMin - yPad, yHi = yMax + yPad;
+    const sx = (v) => PAD.l + ((v - xLo) / (xHi - xLo)) * IW;
+    const sy = (v) => PAD.t + IH - ((v - yLo) / (yHi - yLo)) * IH;
+
+    // Means for quadrants
+    const xAvg = xVals.reduce((a, b) => a + b, 0) / xVals.length;
+    const yAvg = yVals.reduce((a, b) => a + b, 0) / yVals.length;
+    const cx = sx(xAvg), cy = sy(yAvg);
+
+    let bg = '';
+    // Quadrant guide lines
+    bg += `<line x1="${cx}" y1="${PAD.t}" x2="${cx}" y2="${PAD.t + IH}" stroke="rgba(45,36,24,.08)" stroke-width="1" stroke-dasharray="4 3"/>`;
+    bg += `<line x1="${PAD.l}" y1="${cy}" x2="${PAD.l + IW}" y2="${cy}" stroke="rgba(45,36,24,.08)" stroke-width="1" stroke-dasharray="4 3"/>`;
+    // Frame
+    bg += `<rect x="${PAD.l}" y="${PAD.t}" width="${IW}" height="${IH}" fill="none" stroke="rgba(45,36,24,.12)"/>`;
+    // Axis ticks (5)
+    function ticks(lo, hi, n=5) { const a=[]; for (let i=0;i<=n;i++) a.push(lo + (hi-lo)*i/n); return a; }
+    for (const xv of ticks(xLo, xHi)) {
+      bg += `<text x="${sx(xv)}" y="${PAD.t + IH + 14}" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#8a8278">${fmtTick(xv, _xKey)}</text>`;
+    }
+    for (const yv of ticks(yLo, yHi)) {
+      bg += `<text x="${PAD.l - 6}" y="${sy(yv) + 3}" text-anchor="end" font-family="JetBrains Mono" font-size="9" fill="#8a8278">${fmtTick(yv, _yKey)}</text>`;
+    }
+    // Axis labels
+    bg += `<text x="${PAD.l + IW/2}" y="${H - 8}" text-anchor="middle" font-family="Barlow Condensed" font-size="11" letter-spacing="2" fill="#5e574e" text-transform="uppercase">${esc(xA.lbl)}</text>`;
+    bg += `<text x="${14}" y="${PAD.t + IH/2}" text-anchor="middle" font-family="Barlow Condensed" font-size="11" letter-spacing="2" fill="#5e574e" transform="rotate(-90 14 ${PAD.t + IH/2})">${esc(yA.lbl)}</text>`;
+
+    let dots = '';
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]; const xp = sx(p.x), yp = sy(p.y);
+      const col = quadColor(p.x, p.y, xAvg, yAvg, xA.dir, yA.dir);
+      // Team abbreviation as label inside the dot
+      dots += `<g class="team-dot" data-team="${esc(p.t.team)}" style="cursor:pointer">
+        <circle cx="${xp}" cy="${yp}" r="14" fill="${col}" fill-opacity=".82" stroke="#1d1916" stroke-opacity=".4"/>
+        <text x="${xp}" y="${yp + 3}" text-anchor="middle" font-family="Barlow Condensed" font-size="9" font-weight="700" letter-spacing="1" fill="#fff">${esc(p.t.team)}</text>
+      </g>`;
+    }
+
+    svg.innerHTML = `<title>${esc(xA.lbl)} vs ${esc(yA.lbl)}</title>` + bg + dots;
+    // Click handlers
+    svg.querySelectorAll('.team-dot').forEach((g) => {
+      g.addEventListener('click', () => openTeamCard(g.dataset.team));
+    });
+
+    // Update title text
+    const titleEl = $('t-c-title');
+    if (titleEl) titleEl.innerHTML = `${esc(yA.lbl)} <em>vs</em> ${esc(xA.lbl)}`;
+    const subEl = $('t-c-sub');
+    if (subEl) subEl.textContent = `${pts.length} teams · hover for stats · click any dot or card for roster breakdown`;
+  }
+
+  function quadColor(x, y, xAvg, yAvg, xDir, yDir) {
+    // Up & right = elite (green), down & left = poor (red), mixed = neutral.
+    const xGood = xDir === 1 ? x >= xAvg : x <= xAvg;
+    const yGood = yDir === 1 ? y >= yAvg : y <= yAvg;
+    if (xGood && yGood) return '#047857';
+    if (!xGood && !yGood) return '#b7472a';
+    return '#a99e8e';
+  }
+  function fmtTick(v, key) {
+    const a = axBy(key);
+    if (['avg', 'obp', 'slg', 'iso', 'wOBA'].includes(a.k)) return v.toFixed(3);
+    if (['kPct', 'bbPct', 'kPctP', 'bbPctP'].includes(a.k)) return ((v > 1 ? v : v * 100).toFixed(1));
+    return Math.round(v).toString();
+  }
+  function fmtVal(v, key) {
+    if (v == null) return '—';
+    const a = axBy(key);
+    if (['avg', 'obp', 'slg', 'iso', 'wOBA'].includes(a.k)) return v.toFixed(3);
+    if (['era', 'fip', 'xFIP', 'whip'].includes(a.k)) return v.toFixed(2);
+    if (['kPct', 'bbPct', 'kPctP', 'bbPctP'].includes(a.k)) return (v > 1 ? v : v * 100).toFixed(1) + '%';
+    if (['batWAR', 'pitWAR', 'runDiff'].includes(a.k)) return v.toFixed(1);
+    return Math.round(v).toString();
+  }
+
+  // ── Team cards grid ──
+  function renderGrid() {
+    const wrap = $('teams-grid'); if (!wrap) return;
+    const sorted = _teams.slice().sort((a, b) => {
+      const dir = axBy(_yKey).dir;
+      const av = num(a[_yKey]); const bv = num(b[_yKey]);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      return dir === 1 ? bv - av : av - bv;
+    });
+    const yA = axBy(_yKey), xA = axBy(_xKey);
+    wrap.innerHTML = sorted.map((t, i) => `
+      <button class="team-card" data-team="${esc(t.team)}" type="button">
+        <div class="team-card-head">
+          <span class="team-abbr">${esc(t.team)}</span>
+          <span class="team-name">${esc(t.teamName)}</span>
+          <span class="team-rank">#${i + 1}</span>
+        </div>
+        <div class="team-card-stats">
+          <div class="tcs"><span class="tcs-lbl">${esc(yA.lbl)}</span><span class="tcs-val">${fmtVal(num(t[_yKey]), _yKey)}</span></div>
+          <div class="tcs"><span class="tcs-lbl">${esc(xA.lbl)}</span><span class="tcs-val">${fmtVal(num(t[_xKey]), _xKey)}</span></div>
+        </div>
+        <div class="team-card-sub">
+          ${t.n_bat} batters · ${t.n_pit} pitchers · ${Math.round(t.totalIP || 0)} IP
+        </div>
+      </button>
+    `).join('');
+    wrap.querySelectorAll('.team-card').forEach((btn) => {
+      btn.addEventListener('click', () => openTeamCard(btn.dataset.team));
+    });
+  }
+
+  // ── Team card modal ──
+  function openTeamCard(teamAbbr) {
+    const t = _teams.find(x => x.team === teamAbbr);
+    if (!t) return;
+    const lo = lineup(t), rot = rotation(t), rel = keyRelievers(t);
+    const content = $('tc-overlay-content');
+    content.innerHTML = `
+      <div class="tc-head">
+        <div>
+          <div class="tc-abbr">${esc(t.team)}</div>
+          <div class="tc-name">${esc(t.teamName)}</div>
+        </div>
+        <div class="tc-marks">
+          <span class="tcm">wRC+ <b>${fmtVal(t.wrcPlus, 'wrcPlus')}</b></span>
+          <span class="tcm">wOBA <b>${fmtVal(t.wOBA, 'wOBA')}</b></span>
+          <span class="tcm">ERA <b>${fmtVal(t.era, 'era')}</b></span>
+          <span class="tcm">FIP <b>${fmtVal(t.fip, 'fip')}</b></span>
+          <span class="tcm">Bat WAR <b>${fmtVal(t.batWAR, 'batWAR')}</b></span>
+          <span class="tcm">Pit WAR <b>${fmtVal(t.pitWAR, 'pitWAR')}</b></span>
+        </div>
+      </div>
+
+      <div class="tc-grid">
+        <div class="tc-section">
+          <div class="tc-section-h">Starting Lineup <em>(top 9 by PA)</em></div>
+          <table class="tc-roster">
+            <thead><tr>
+              <th>#</th><th>Batter</th><th class="num">PA</th><th class="num">AVG</th>
+              <th class="num">OBP</th><th class="num">SLG</th><th class="num">HR</th>
+              <th class="num">wRC+</th><th class="num">WAR</th>
+            </tr></thead>
+            <tbody>${lo.map((b, i) => `<tr>
+              <td>${i + 1}</td>
+              <td>${esc(b.PlayerName)}<small>${esc(b.Bats || '?')}HB</small></td>
+              <td class="num">${b.PA || 0}</td>
+              <td class="num">${(num(b.AVG)||0).toFixed(3)}</td>
+              <td class="num">${(num(b.OBP)||0).toFixed(3)}</td>
+              <td class="num">${(num(b.SLG)||0).toFixed(3)}</td>
+              <td class="num">${b.HR || 0}</td>
+              <td class="num">${Math.round(num(b['wRC+'])||0)}</td>
+              <td class="num">${(num(b.WAR)||0).toFixed(1)}</td>
+            </tr>`).join('') || '<tr><td colspan="9" class="hint">No batters in dataset.</td></tr>'}</tbody>
+          </table>
+        </div>
+
+        <div class="tc-section">
+          <div class="tc-section-h">Rotation <em>(top 5 by GS)</em></div>
+          <table class="tc-roster">
+            <thead><tr>
+              <th>#</th><th>Starter</th><th class="num">GS</th><th class="num">IP</th>
+              <th class="num">ERA</th><th class="num">FIP</th><th class="num">K%</th>
+              <th class="num">BB%</th><th class="num">WAR</th>
+            </tr></thead>
+            <tbody>${rot.map((p, i) => `<tr>
+              <td>${i + 1}</td>
+              <td>${esc(p.PlayerName)}<small>${esc(p.Throws || '?')}HP</small></td>
+              <td class="num">${p.GS || 0}</td>
+              <td class="num">${(num(p.IP) || 0).toFixed(1)}</td>
+              <td class="num">${(num(p.ERA) || 0).toFixed(2)}</td>
+              <td class="num">${(num(p.FIP) || 0).toFixed(2)}</td>
+              <td class="num">${pctTxt(p['K%'])}</td>
+              <td class="num">${pctTxt(p['BB%'])}</td>
+              <td class="num">${(num(p.WAR)||0).toFixed(1)}</td>
+            </tr>`).join('') || '<tr><td colspan="9" class="hint">No starters in dataset.</td></tr>'}</tbody>
+          </table>
+        </div>
+
+        <div class="tc-section">
+          <div class="tc-section-h">Key Relievers</div>
+          ${rel.length === 0
+            ? '<div class="hint" style="padding:8px">No qualifying relievers in current dataset.</div>'
+            : `<table class="tc-roster">
+              <thead><tr>
+                <th>Role</th><th>Pitcher</th><th class="num">G</th><th class="num">IP</th>
+                <th class="num">SV</th><th class="num">ERA</th><th class="num">FIP</th>
+                <th class="num">K%</th><th class="num">WAR</th>
+              </tr></thead>
+              <tbody>${rel.map(p => `<tr>
+                <td class="tag-cell">${esc(p._label)}</td>
+                <td>${esc(p.PlayerName)}<small>${esc(p.Throws || '?')}HP</small></td>
+                <td class="num">${p.G || 0}</td>
+                <td class="num">${(num(p.IP) || 0).toFixed(1)}</td>
+                <td class="num">${p.SV || 0}</td>
+                <td class="num">${(num(p.ERA) || 0).toFixed(2)}</td>
+                <td class="num">${(num(p.FIP) || 0).toFixed(2)}</td>
+                <td class="num">${pctTxt(p['K%'])}</td>
+                <td class="num">${(num(p.WAR)||0).toFixed(1)}</td>
+              </tr>`).join('')}</tbody>
+            </table>`
+          }
+        </div>
+      </div>
+    `;
+    $('tc-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function pctTxt(v) {
+    const n = num(v); if (n == null) return '—';
+    return (n > 1 ? n : n * 100).toFixed(1) + '%';
+  }
+  window.closeTeamCard = function () {
+    const ov = $('tc-overlay');
+    if (ov) ov.classList.remove('open');
+    document.body.style.overflow = '';
+  };
+  // Click overlay backdrop or Esc to close
+  document.addEventListener('click', (e) => {
+    const ov = $('tc-overlay'); if (!ov) return;
+    if (e.target === ov) window.closeTeamCard();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') window.closeTeamCard();
+  });
+
+  // ── Axis pickers (use existing #x-sel and #y-sel; we swap their options) ──
+  let _origXOpts, _origYOpts, _origMinV;
+  function activateTeamsMode() {
+    // Hide player-mode chart/table cards
+    document.querySelector('#app-explorer .chart-card').style.display = 'none';
+    document.querySelector('#app-explorer .tbl-card').style.display = 'none';
+    $('teams-view').hidden = false;
+
+    // Hide filters that don't apply to teams
+    const card = (el) => el && el.closest && el.closest('.card');
+    [card($('age-mn')), card($('min-v')), card($('role-row')), card($('srch')), card($('tm-sel'))]
+      .forEach(c => { if (c) c.style.display = 'none'; });
+
+    // Swap axis options
+    const xSel = $('x-sel'), ySel = $('y-sel');
+    if (!_origXOpts) { _origXOpts = xSel.innerHTML; _origYOpts = ySel.innerHTML; }
+    const opts = AXES.map(a => `<option value="${a.k}">${esc(a.lbl)}</option>`).join('');
+    xSel.innerHTML = opts; ySel.innerHTML = opts;
+    xSel.value = _xKey; ySel.value = _yKey;
+
+    // Wire onchange to teams render — preserve original later
+    xSel.onchange = () => { _xKey = xSel.value; renderScatter(); renderGrid(); };
+    ySel.onchange = () => { _yKey = ySel.value; renderScatter(); renderGrid(); };
+
+    // Load data + render
+    load().then(() => {
+      renderScatter();
+      renderGrid();
+      const cnt = $('p-cnt'); if (cnt) cnt.textContent = String(_teams.length);
+      const lbl = document.querySelector('.count-lbl'); if (lbl) lbl.textContent = 'Teams Shown';
+    });
+  }
+
+  function deactivateTeamsMode() {
+    document.querySelector('#app-explorer .chart-card').style.display = '';
+    document.querySelector('#app-explorer .tbl-card').style.display = '';
+    $('teams-view').hidden = true;
+    // Restore filter visibility
+    document.querySelectorAll('#app-explorer .sidebar .card').forEach(c => { c.style.display = ''; });
+    const role = $('role-row'); if (role) role.style.display = 'none'; // explorer manages this
+    // Restore axis options
+    const xSel = $('x-sel'), ySel = $('y-sel');
+    if (_origXOpts && xSel) xSel.innerHTML = _origXOpts;
+    if (_origYOpts && ySel) ySel.innerHTML = _origYOpts;
+    xSel.onchange = null; ySel.onchange = null;
+    if (typeof window.render === 'function') window.render();
+    const lbl = document.querySelector('.count-lbl'); if (lbl) lbl.textContent = 'Players Shown';
+  }
+
+  // Public hooks
+  window.setTeamsMode = function (btn) {
+    document.querySelectorAll('.ptab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    activateTeamsMode();
+  };
+
+  // When user clicks Hitters or Pitchers, deactivate teams mode first.
+  // We wrap the existing setModeBtn — defer until after explorer.js loads.
+  window.addEventListener('load', () => {
+    const orig = window.setModeBtn;
+    if (typeof orig !== 'function') return;
+    window.setModeBtn = function (btn) {
+      if (!$('teams-view').hidden) deactivateTeamsMode();
+      return orig(btn);
+    };
+  });
+})();

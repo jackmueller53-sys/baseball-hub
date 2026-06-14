@@ -295,6 +295,13 @@ async function main() {
   try { results.fgPit = await fetchFG('pit', thresholds.fgQualPit, 8); }
   catch (e) { errors.push(`FG pit: ${e.message}`); results.fgPit = []; console.error(`    ERROR: ${e.message}`); }
 
+  // ── FanGraphs Pitching ALL (qual=0) — needed for team-level relief stats ──
+  // The qualified pull above excludes nearly all relievers. The Teams view
+  // computes "key relievers" (IP leader, SV leader) and needs the full pool.
+  console.log('\n[2b] FanGraphs Pitching (full, qual=0 — relievers)');
+  try { results.fgPitAll = await fetchFG('pit', 0, 8); }
+  catch (e) { errors.push(`FG pit-all: ${e.message}`); results.fgPitAll = []; console.error(`    ERROR: ${e.message}`); }
+
   // NOTE: FG plate-discipline batting (type=7) historically returns the same
   // payload as type=8 for our use case, and no client code reads the resulting
   // file. Skipping the fetch + write saves ~3 MB per cron run.
@@ -329,6 +336,7 @@ async function main() {
   console.log('\n── Saving data files ──');
   saveJSON('fg-bat.json', results.fgBat);
   saveJSON('fg-pit.json', results.fgPit);
+  saveJSON('fg-pit-all.json', results.fgPitAll);
   saveJSON('fg-disc-pit.json', results.fgDiscPit);
   // Slim fg-stuffplus.json to only the ~22 fields the client + python model read.
   // Full FG payload is ~400 cols × 636 rows ≈ 6.4 MB; slim is ~400 KB.

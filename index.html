@@ -29,7 +29,7 @@
 <link rel="preload" as="fetch" href="data/stuffplus-history.json" type="application/json" crossorigin="anonymous">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js" defer></script>
-<link rel="stylesheet" href="css/styles.css?v=20260527">
+<link rel="stylesheet" href="css/styles.css?v=20260610">
 </head>
 <body>
 
@@ -47,6 +47,12 @@
 <div id="pc-overlay">
   <button class="pc-close" onclick="closePcOverlay()">&#10005;</button>
   <div id="pc-overlay-content"></div>
+</div>
+
+<!-- ═══ TEAM CARD MODAL ═════════════════════════════════════════════════════ -->
+<div id="tc-overlay">
+  <button class="tc-close" onclick="closeTeamCard()" aria-label="Close team card">&#10005;</button>
+  <div id="tc-overlay-content"></div>
 </div>
 
 <div class="page">
@@ -85,6 +91,7 @@
       <div class="player-tabs" style="flex-shrink:0">
         <button class="ptab active" id="ptab-hit" data-mode="hitters" onclick="setModeBtn(this)">&#127947; Hitters</button>
         <button class="ptab" id="ptab-pit" data-mode="pitchers" onclick="setModeBtn(this)">&#9918; Pitchers</button>
+        <button class="ptab" id="ptab-teams" data-mode="teams" onclick="setTeamsMode(this)">&#9917; Teams</button>
       </div>
       <div class="src-pills" style="flex-shrink:0">
         <a class="src-pill pill-fg" href="https://www.fangraphs.com" target="_blank" rel="noopener noreferrer"><span class="pill-dot"></span>FanGraphs</a>
@@ -236,6 +243,28 @@
         </div>
         <div class="tbl-wrap"><table><thead id="t-head"></thead><tbody id="t-body"></tbody></table></div>
       </div>
+
+      <!-- ── Teams sub-mode (hidden when Hitters / Pitchers active) ── -->
+      <div class="teams-view" id="teams-view" hidden>
+        <div class="chart-card">
+          <div class="chart-head">
+            <div>
+              <div class="chart-title" id="t-c-title">Team wRC+ <em>vs</em> Team ERA-</div>
+              <div class="chart-sub" id="t-c-sub">Each dot is one of the 30 MLB teams · hover for stats · click to see roster</div>
+            </div>
+          </div>
+          <div class="chart-body">
+            <svg class="scatter" id="svg-teams" viewBox="0 0 900 470" role="img" aria-label="Team scatter">
+              <title>Team scatter plot</title>
+              <desc>Each dot is one MLB team. Compare two team-level statistics.</desc>
+            </svg>
+          </div>
+          <div class="chart-footer">
+            <span class="cf-hint">Hover dots for team stats &nbsp;&middot;&nbsp; Click a dot or card for roster breakdown</span>
+          </div>
+        </div>
+        <div class="teams-grid" id="teams-grid"></div>
+      </div>
     </main>
   </div>
 
@@ -356,6 +385,7 @@
 
 <script src="js/navigation.js" defer></script>
 <script src="js/explorer.js" defer></script>
+<script src="js/teams.js?v=20260610" defer></script>
 <script src="js/leaderboard.js?v=20260527" defer></script>
 <script src="js/init.js?v=20260527" defer></script>
 <script src="js/milb-nav-inject.js" defer></script>
