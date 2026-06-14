@@ -620,3 +620,20 @@
 .vt-pct-fill.vt-lo  { background: #B91C1C; }
 .vt-pct-num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--fg, #2d2418); }
 .vt-na { color: var(--fg2, #6b6b6b); }
+
+/* ─── Pitch movement plot (MiLB pitcher card) ──────────────────────── */
+.mlb-movement-wrap {
+  display:flex; flex-direction:column; gap:8px;
+  width:100%; aspect-ratio:4/3; max-height:340px;
+  background:var(--bg-card, #fff);
+}
+.mlb-movement-wrap > svg {
+  flex:1; min-height:0;
+}
+.mlb-movement-wrap .legend {
+  flex-shrink:0;
+}
+.mlb-movement-wrap .pitch-dot {
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  margin-right:4px; vertical-align:middle;
+}

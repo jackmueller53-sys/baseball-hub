@@ -232,13 +232,22 @@ async function fetchGameData(gamePk, gameDate) {
       const isSwing  = isInPlay || isFoul || isWhiff;
       // Last pitch of an AB? Only the final pitch should count for put-away
       const isLastPitchOfPA = (pi === playEvents.length - 1) || playEvents.slice(pi + 1).every(p2 => !p2.details || !p2.details.type);
+      // Movement data — Stats API gives pfxX / pfxZ in FEET, catcher's
+      // perspective. Stored raw; aggregateArsenal flips to pitcher's view
+      // and converts to inches.
+      const pCoord = pd.coordinates || {};
+      const throwsCode = (pitcher.pitchHand && pitcher.pitchHand.code) || null;
       pitches.push({
         pitcher_id: pitcher.id,
         pitcher_name: pitcher.fullName || '',
+        throws: throwsCode,
         d: gameDate.slice(0, 10),
         code: t.code,
         type: t.description || t.code,
         velo: pd.startSpeed,
+        // pfxX / pfxZ: feet, catcher's perspective. NULLs handled downstream.
+        pfx_x: typeof pCoord.pfxX === 'number' ? pCoord.pfxX : null,
+        pfx_z: typeof pCoord.pfxZ === 'number' ? pCoord.pfxZ : null,
         is_swing: isSwing,
         is_whiff: isWhiff,
         is_in_play: isInPlay,
@@ -315,7 +324,7 @@ function aggregateForBatter(events) {
 function aggregateArsenal(pitches) {
   if (!pitches.length) return null;
   const total = pitches.length;
-  // Group by pitch code
+  // Group by pitch code; track movement (pfx_x/pfx_z) samples for mean+SD.
   const byCode = {};
   for (const p of pitches) {
     if (!p.code) continue;
@@ -323,7 +332,9 @@ function aggregateArsenal(pitches) {
       byCode[p.code] = {
         code: p.code, type: p.type || p.code,
         n: 0, sumVelo: 0, nVelo: 0,
-        swings: 0, whiffs: 0, twoStrike: 0, putaway: 0
+        swings: 0, whiffs: 0, twoStrike: 0, putaway: 0,
+        // Movement raw samples (FEET, catcher's perspective)
+        hbVals: [], vbVals: [],
       };
     }
     const r = byCode[p.code];
@@ -333,18 +344,40 @@ function aggregateArsenal(pitches) {
     if (p.is_whiff) r.whiffs++;
     if (p.was_two_strike) r.twoStrike++;
     if (p.is_putaway) r.putaway++;
+    if (typeof p.pfx_x === 'number' && typeof p.pfx_z === 'number') {
+      r.hbVals.push(p.pfx_x);
+      r.vbVals.push(p.pfx_z);
+    }
   }
   const arsenal = Object.values(byCode)
     .filter(r => r.n >= 1)
-    .map(r => ({
-      code: r.code,
-      type: r.type,
-      n: r.n,
-      pct:  +(100 * r.n / total).toFixed(1),
-      velo: r.nVelo ? +(r.sumVelo / r.nVelo).toFixed(1) : null,
-      whiff_pct:    r.swings    ? +(100 * r.whiffs  / r.swings).toFixed(1)    : null,
-      put_away_pct: r.twoStrike ? +(100 * r.putaway / r.twoStrike).toFixed(1) : null
-    }))
+    .map(r => {
+      // Movement: convert ft -> in (×12), flip pfx_x sign so + = arm side
+      // (matches the MLB pitcher card convention).
+      let avg_hb_in = null, avg_ivb_in = null, sd_hb_in = null, sd_ivb_in = null, n_mov = 0;
+      if (r.hbVals.length >= 3) {
+        const hbIn = r.hbVals.map(v => -v * 12);   // flip + convert
+        const vbIn = r.vbVals.map(v =>  v * 12);
+        const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+        const sd   = (a, m) => Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length);
+        avg_hb_in  = +mean(hbIn).toFixed(2);
+        avg_ivb_in = +mean(vbIn).toFixed(2);
+        sd_hb_in   = +sd(hbIn, avg_hb_in).toFixed(2);
+        sd_ivb_in  = +sd(vbIn, avg_ivb_in).toFixed(2);
+        n_mov = hbIn.length;
+      }
+      return {
+        code: r.code,
+        type: r.type,
+        n: r.n,
+        pct:  +(100 * r.n / total).toFixed(1),
+        velo: r.nVelo ? +(r.sumVelo / r.nVelo).toFixed(1) : null,
+        whiff_pct:    r.swings    ? +(100 * r.whiffs  / r.swings).toFixed(1)    : null,
+        put_away_pct: r.twoStrike ? +(100 * r.putaway / r.twoStrike).toFixed(1) : null,
+        // Movement (pitcher's perspective, inches). null when sample <3.
+        avg_hb_in, avg_ivb_in, sd_hb_in, sd_ivb_in, n_mov,
+      };
+    })
     .sort((a, b) => b.pct - a.pct);
   return arsenal;
 }
@@ -453,9 +486,18 @@ async function processLevel(level) {
     if (rec.pitches.length < MIN_PITCHES_FOR_ARSENAL) continue;
     const arsenal = aggregateArsenal(rec.pitches);
     if (!arsenal || !arsenal.length) continue;
+    // Consensus pitcher handedness — pick the majority `throws` code across
+    // the pitches we saw (occasionally feeds drop the hand on isolated pitches).
+    let rH = 0, lH = 0;
+    for (const p of rec.pitches) {
+      if (p.throws === 'R') rH++;
+      else if (p.throws === 'L') lH++;
+    }
+    const throws = rH >= lH ? (rH > 0 ? 'R' : null) : 'L';
     const data = {
       player_id: parseInt(pid, 10),
       name: rec.name,
+      throws: throws,
       last_updated: new Date().toISOString(),
       total_pitches: rec.pitches.length,
       arsenal: arsenal

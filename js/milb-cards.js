@@ -875,6 +875,12 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     +       '</div>'
     +     '</div>'
     +     '<div class="pc-row">'
+    +       '<div class="chart-panel" data-movement-target="' + (p.player_id || '0') + '">'
+    +         '<div class="cp-title">Pitch Movement<span class="cp-src cp-src-mlb">Statcast</span></div>'
+    +         '<div class="mlb-movement-wrap"><div class="ar-loading">Loading pitch movement…</div></div>'
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="pc-row">'
     +       '<div class="chart-panel ' + (qualified && bbAHasData ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">Batted-Ball Against<span class="cp-src cp-src-mlb">Statcast</span></div>'
     +         (bbAHasData ? ('<div class="gauge-grid">' + bbAHtml + '</div>') : bbEmptyMsg())
@@ -934,17 +940,142 @@ function hydrateBBE(player, levelLabel, lg) {
 function hydrateArsenal(player, levelLabel) {
   if (!player || !player.player_id) return;
   fetchArsenal(levelLabel, player.player_id).then(function (data) {
-    var el = document.querySelector('[data-arsenal-target="' + player.player_id + '"]');
-    if (!el) return;
-    var titleHtml = '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>';
-    var bodyHtml;
-    if (data && data.arsenal && data.arsenal.length) {
-      bodyHtml = arsenalTable(data.arsenal);
-    } else {
-      bodyHtml = arsenalTable(null);  // empty-state HTML
+    var arsenalEl = document.querySelector('[data-arsenal-target="' + player.player_id + '"]');
+    if (arsenalEl) {
+      var titleHtml = '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>';
+      var bodyHtml = (data && data.arsenal && data.arsenal.length)
+        ? arsenalTable(data.arsenal)
+        : arsenalTable(null);
+      arsenalEl.innerHTML = titleHtml + bodyHtml;
     }
-    el.innerHTML = titleHtml + bodyHtml;
+    var moveEl = document.querySelector('[data-movement-target="' + player.player_id + '"]');
+    if (moveEl) {
+      var mTitle = '<div class="cp-title">Pitch Movement<span class="cp-src cp-src-mlb">Statcast</span></div>';
+      var hasMov = !!(data && data.arsenal && data.arsenal.some(function (a) { return a.n_mov > 0 && a.avg_hb_in != null; }));
+      var mBody = hasMov
+        ? renderMiLBMovement(data.arsenal, data.throws)
+        : '<div class="ar-empty">Pitch-by-pitch movement unavailable for this player.<br>'
+        + '<span class="ar-empty-sub">Statcast coverage is full at AAA, partial at FSL.</span></div>';
+      moveEl.innerHTML = mTitle + '<div class="mlb-movement-wrap">' + mBody + '</div>';
+    }
   });
+}
+
+// ── Pitch-type helpers (mirror explorer.js' helpers; vendored here to keep
+//    milb-cards.js self-contained so the MiLB pages can load without
+//    explorer.js — the MiLB pages don't bundle the MLB Stats Explorer JS).
+var MILB_PITCH_COLORS = {
+  FF: '#B91C1C', SI: '#DC2626', FT: '#DC2626', FC: '#92400E',
+  SL: '#047857', ST: '#0D9488', SV: '#0D9488', CU: '#1D4ED8', KC: '#3730A3',
+  CH: '#7C3AED', FS: '#D97706', FO: '#D97706', SC: '#7C3AED',
+  KN: '#6B7280', EP: '#6B7280',
+};
+var MILB_PITCH_NAMES = {
+  FF: 'Four-Seam',  SI: 'Sinker',   FT: 'Two-Seam', FC: 'Cutter',
+  SL: 'Slider',     ST: 'Sweeper',  SV: 'Slurve',
+  CU: 'Curveball',  KC: 'Knuckle-C',
+  CH: 'Changeup',   FS: 'Splitter', FO: 'Forkball', SC: 'Screwball',
+  KN: 'Knuckleball', EP: 'Eephus',
+};
+function milbPitchColor(code) { return MILB_PITCH_COLORS[code] || '#6B7280'; }
+function milbPitchName(code)  { return MILB_PITCH_NAMES[code]  || (code || '—'); }
+
+// Render movement plot from AGGREGATED arsenal data (no per-pitch records).
+// Each pitch type contributes one cluster: an ellipse sized by (sdHB, sdVB)
+// in inches centered on (avgHB, avgVB). Pitcher's perspective.
+function renderMiLBMovement(arsenal, throws) {
+  if (!arsenal || !arsenal.length) return '';
+  var isRHP = (throws !== 'L');
+  var handLabel = isRHP ? 'RHP' : 'LHP';
+  var RANGE = 25; // ±25 in.
+
+  // Coordinate transforms (SVG viewBox 400×300; chart area 50,10 → 350,260)
+  var px = function (v) { return 50 + (v + RANGE) / (2 * RANGE) * 300; };
+  var py = function (v) { return 10 + (RANGE - v) / (2 * RANGE) * 250; };
+
+  var svg = '<svg viewBox="0 0 400 300" style="width:100%;height:100%">';
+  svg += '<rect x="50" y="10" width="300" height="250" fill="rgba(0,0,0,.02)" rx="4"/>';
+  // Zero lines
+  svg += '<line x1="' + px(0) + '" y1="10" x2="' + px(0) + '" y2="260" stroke="rgba(0,0,0,.1)" stroke-dasharray="4 3"/>';
+  svg += '<line x1="50" y1="' + py(0) + '" x2="350" y2="' + py(0) + '" stroke="rgba(0,0,0,.1)" stroke-dasharray="4 3"/>';
+
+  // Axes labels (pitcher's perspective)
+  var armSide  = isRHP ? 'ARM SIDE →' : '← ARM SIDE';
+  var gloveSide = isRHP ? '← GLOVE SIDE' : 'GLOVE SIDE →';
+  svg += '<text x="200" y="285" text-anchor="middle" fill="#6b88aa" font-family="Barlow Condensed" font-size="10">'
+       + gloveSide + '   HB (in.)   ' + armSide + '</text>';
+  svg += '<text transform="rotate(-90)" x="-135" y="16" text-anchor="middle" fill="#6b88aa" font-family="Barlow Condensed" font-size="10">'
+       + 'INDUCED VERT. BREAK (in.)</text>';
+  // Handedness badge
+  svg += '<text x="345" y="24" text-anchor="end" fill="rgba(45,36,24,.35)" font-family="Barlow Condensed" font-size="11" font-weight="700" letter-spacing="2">'
+       + handLabel + '</text>';
+  // Ticks
+  var ticks = [-20, -10, 0, 10, 20];
+  for (var ti = 0; ti < ticks.length; ti++) {
+    var t = ticks[ti];
+    svg += '<text x="' + px(t) + '" y="275" text-anchor="middle" fill="#6b88aa" font-family="Barlow Condensed" font-size="9">' + t + '</text>';
+    if (t !== 0) svg += '<line x1="' + px(t) + '" y1="10" x2="' + px(t) + '" y2="260" stroke="rgba(0,0,0,.06)"/>';
+    svg += '<text x="44" y="' + (py(t) + 3) + '" text-anchor="end" fill="#6b88aa" font-family="Barlow Condensed" font-size="9">' + t + '</text>';
+    if (t !== 0) svg += '<line x1="50" y1="' + py(t) + '" x2="350" y2="' + py(t) + '" stroke="rgba(0,0,0,.06)"/>';
+  }
+
+  // Arm-axis line + angle (from fastball)
+  var fb = arsenal.find(function (a) { return a.code === 'FF'; })
+        || arsenal.find(function (a) { return a.code === 'SI'; });
+  var armAngleDeg = null;
+  if (fb && fb.avg_hb_in != null && fb.avg_ivb_in != null) {
+    var rawDeg = Math.atan2(fb.avg_ivb_in, fb.avg_hb_in) * 180 / Math.PI;
+    armAngleDeg = Math.round(rawDeg);
+    var rad = rawDeg * Math.PI / 180;
+    var L = 22;
+    svg += '<line x1="' + px(-L * Math.cos(rad)) + '" y1="' + py(-L * Math.sin(rad))
+         + '" x2="' + px(L * Math.cos(rad)) + '" y2="' + py(L * Math.sin(rad))
+         + '" stroke="#92400E" stroke-width="1.5" stroke-dasharray="6 3" opacity=".35"/>';
+    var disp = armAngleDeg >= 0 ? armAngleDeg : armAngleDeg + 180;
+    svg += '<text x="' + (px(L * 0.8 * Math.cos(rad)) + 6) + '" y="' + (py(L * 0.8 * Math.sin(rad)) - 4)
+         + '" fill="#92400E" font-family="Barlow Condensed" font-size="9" letter-spacing="1" opacity=".7">'
+         + disp + '°</text>';
+  }
+
+  // Clusters — smallest-usage drawn last so the most-used pitch shows on top
+  var sortedDesc = arsenal.slice()
+    .filter(function (a) { return a.avg_hb_in != null && a.n_mov >= 3; })
+    .sort(function (a, b) { return a.n - b.n; }); // ascending → smallest first
+  for (var i = 0; i < sortedDesc.length; i++) {
+    var a = sortedDesc[i];
+    var color = milbPitchColor(a.code);
+    var cx = px(a.avg_hb_in), cy = py(a.avg_ivb_in);
+    var rx = Math.max((a.sd_hb_in || 1) / (2 * RANGE) * 300, 5);
+    var ry = Math.max((a.sd_ivb_in || 1) / (2 * RANGE) * 250, 5);
+    svg += '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry
+         + '" fill="' + color + '" fill-opacity=".10" stroke="' + color
+         + '" stroke-width="1.5" opacity=".7"/>';
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="' + color
+         + '" stroke="rgba(0,0,0,.5)" stroke-width="1.2"/>';
+    svg += '<text x="' + (cx + 9) + '" y="' + (cy + 4) + '" fill="' + color
+         + '" font-family="Barlow Condensed" font-size="10" font-weight="700">'
+         + escapeHtml(milbPitchName(a.code).substring(0, 3).toUpperCase()) + '</text>';
+  }
+
+  svg += '</svg>';
+
+  // Legend
+  var legend = '<div class="legend">';
+  var sortedByUsage = arsenal.slice()
+    .filter(function (a) { return a.avg_hb_in != null && a.n_mov >= 3; })
+    .sort(function (a, b) { return b.n - a.n; });
+  for (var j = 0; j < sortedByUsage.length; j++) {
+    var b = sortedByUsage[j];
+    legend += '<div class="legend-item"><span class="pitch-dot" style="background:'
+            + milbPitchColor(b.code) + '"></span>' + escapeHtml(milbPitchName(b.code))
+            + '</div>';
+  }
+  if (armAngleDeg !== null) legend += '<div class="legend-item" style="color:#92400E">- - Arm Axis</div>';
+  legend += '<div class="legend-item" style="color:rgba(45,36,24,.4)">'
+          + handLabel + ' · Pitcher\'s perspective</div>';
+  legend += '</div>';
+
+  return svg + legend;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
