@@ -1,1 +1,1 @@
-{"player_id":668472,"name":"Nick Pratto","last_updated":"2026-06-14T11:12:23.753Z","total_pitches":6,"arsenal":[{"code":"FA","type":"Fastball","n":6,"pct":100,"velo":79.2,"whiff_pct":0,"put_away_pct":null}]}
+{"player_id":668472,"name":"Nick Pratto","throws":null,"last_updated":"2026-06-14T20:57:22.507Z","total_pitches":6,"arsenal":[{"code":"FA","type":"Fastball","n":6,"pct":100,"velo":79.2,"whiff_pct":0,"put_away_pct":null,"avg_hb_in":-13.76,"avg_ivb_in":101.64,"sd_hb_in":1.2,"sd_ivb_in":7.13,"n_mov":6}]}
