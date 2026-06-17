@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-06-16T13:10:31.339Z",
+  "fetchedAt": "2026-06-17T12:34:37.042Z",
   "season": 2026,
   "enabled": true,
   "source": "statsapi.mlb.com",
@@ -9,12 +9,12 @@
     "fsl"
   ],
   "counts": {
-    "aaa.sa-bat.json": 667,
-    "aaa.sa-pit.json": 912,
-    "fsl.sa-bat.json": 241,
-    "fsl.sa-pit.json": 336
+    "aaa.sa-bat.json": 672,
+    "aaa.sa-pit.json": 917,
+    "fsl.sa-bat.json": 244,
+    "fsl.sa-pit.json": 340
   },
-  "totalRows": 2156,
+  "totalRows": 2173,
   "errors": [],
   "prunedLegacy": [],
   "coverage": {
