@@ -203,6 +203,7 @@ async function fetchGameData(gamePk, gameDate) {
         bbe.push({
           batter_id: batter.id,
           batter_name: batter.fullName || '',
+          pitcher_id: pitcher.id,
           d: gameDate.slice(0, 10),
           x: c.coordX,
           y: c.coordY,
@@ -246,9 +247,19 @@ async function fetchGameData(gamePk, gameDate) {
       const pCoord = pd.coordinates || {};
       const throwsCode = (pitcher.pitchHand && pitcher.pitchHand.code)
         || pitchHandByPid[pitcher.id] || null;
+      // Zone classification — Stats API plate location is pX (ft, catcher's
+      // view) ± .708 ft half-width; pZ from sz_bot to sz_top. We use a stable
+      // proxy: |pX| <= 0.83 AND 1.5 <= pZ <= 3.5 (the league-avg strike zone).
+      const pX = typeof pCoord.pX === 'number' ? pCoord.pX : null;
+      const pZ = typeof pCoord.pZ === 'number' ? pCoord.pZ : null;
+      const isInZone = (pX != null && pZ != null)
+        ? (Math.abs(pX) <= 0.83 && pZ >= 1.5 && pZ <= 3.5)
+        : null;
       pitches.push({
         pitcher_id: pitcher.id,
         pitcher_name: pitcher.fullName || '',
+        batter_id: batter.id,
+        batter_name: batter.fullName || '',
         throws: throwsCode,
         d: gameDate.slice(0, 10),
         code: t.code,
@@ -257,6 +268,7 @@ async function fetchGameData(gamePk, gameDate) {
         // pfxX / pfxZ: feet, catcher's perspective. NULLs handled downstream.
         pfx_x: typeof pCoord.pfxX === 'number' ? pCoord.pfxX : null,
         pfx_z: typeof pCoord.pfxZ === 'number' ? pCoord.pfxZ : null,
+        in_zone: isInZone,
         is_swing: isSwing,
         is_whiff: isWhiff,
         is_in_play: isInPlay,
@@ -364,9 +376,12 @@ function aggregateArsenal(pitches) {
       // Movement: pfx_x / pfx_z already in INCHES (catcher's perspective).
       // Flip pfx_x sign so + = arm side (pitcher's perspective convention).
       let avg_hb_in = null, avg_ivb_in = null, sd_hb_in = null, sd_ivb_in = null, n_mov = 0;
+      let samples = [];   // raw [hb,vb] pairs in pitcher-perspective inches
       if (r.hbVals.length >= 3) {
         const hbIn = r.hbVals.map(v => -v);   // flip sign only — already inches
         const vbIn = r.vbVals.slice();
+        // Round to .1in to save bytes (still visually identical at 300px)
+        samples = hbIn.map((h, k) => [+h.toFixed(1), +vbIn[k].toFixed(1)]);
         const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
         const sd   = (a, m) => Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length);
         avg_hb_in  = +mean(hbIn).toFixed(2);
@@ -385,6 +400,8 @@ function aggregateArsenal(pitches) {
         put_away_pct: r.twoStrike ? +(100 * r.putaway / r.twoStrike).toFixed(1) : null,
         // Movement (pitcher's perspective, inches). null when sample <3.
         avg_hb_in, avg_ivb_in, sd_hb_in, sd_ivb_in, n_mov,
+        // Per-pitch HB/IVB samples for the dot scatter; rounded to .1in.
+        mov_samples: samples,
       };
     })
     .sort((a, b) => b.pct - a.pct);
@@ -425,6 +442,30 @@ async function processLevel(level) {
       d: e.d, x: e.x, y: e.y, ev: e.ev, la: e.la, bb: e.bb, dist: e.dist, e: e.e, s: e.stand
     });
   }
+  // ── Per-batter pitch-discipline aggregate (Z-Con%, O-Con%, Chase%) ──
+  // Built from the same per-pitch records the arsenal aggregator uses;
+  // gives the hitter card a true zone-vs-chase contact split.
+  const batterDiscByPid = {};
+  for (const p of allPitches) {
+    if (!p.batter_id) continue;
+    const d = batterDiscByPid[p.batter_id] || (batterDiscByPid[p.batter_id] = {
+      z_sw: 0, z_wh: 0, o_sw: 0, o_wh: 0,
+      z_pit: 0, o_pit: 0,
+    });
+    if (p.in_zone === true)  { d.z_pit++; if (p.is_swing) { d.z_sw++; if (p.is_whiff) d.z_wh++; } }
+    if (p.in_zone === false) { d.o_pit++; if (p.is_swing) { d.o_sw++; if (p.is_whiff) d.o_wh++; } }
+  }
+  function batterDisc(pid) {
+    const d = batterDiscByPid[pid]; if (!d) return null;
+    const pct = (n, t) => t > 0 ? +(100 * n / t).toFixed(1) : null;
+    return {
+      z_contact_pct: pct(d.z_sw - d.z_wh, d.z_sw),
+      o_contact_pct: pct(d.o_sw - d.o_wh, d.o_sw),
+      chase_pct:     pct(d.o_sw, d.o_pit),
+      n_pitches_seen: d.z_pit + d.o_pit,
+    };
+  }
+
   // Write BBE shards
   const bbeDir = path.join(MILB_DIR, level.key, 'bbe');
   if (!fs.existsSync(bbeDir)) fs.mkdirSync(bbeDir, { recursive: true });
@@ -432,6 +473,14 @@ async function processLevel(level) {
   const allAggs = [];   // per-player aggregates feeding the league average
   for (const [pid, rec] of Object.entries(byBatter)) {
     const agg = aggregateForBatter(rec.events);
+    const disc = batterDisc(parseInt(pid, 10));
+    if (agg && disc) {
+      // Surface the three disc fields on the agg object so the existing
+      // league-average aggregator (which reads agg.*) picks them up too.
+      agg.z_contact_pct = disc.z_contact_pct;
+      agg.o_contact_pct = disc.o_contact_pct;
+      agg.chase_pct     = disc.chase_pct;
+    }
     const data = {
       player_id: parseInt(pid, 10),
       name: rec.name,
@@ -449,7 +498,8 @@ async function processLevel(level) {
   // client-side.
   const LG_KEYS = ['avg_ev','max_ev','hard_hit_pct','barrel_pct','sweet_spot_pct',
                    'avg_la','gb_pct','ld_pct','fb_pct','pu_pct',
-                   'pull_pct','center_pct','oppo_pct'];
+                   'pull_pct','center_pct','oppo_pct',
+                   'z_contact_pct','o_contact_pct','chase_pct'];
   const lgAvg = {};
   for (const k of LG_KEYS) {
     const vals = allAggs.map(a => a[k]).filter(v => v != null && !isNaN(v));
@@ -491,6 +541,21 @@ async function processLevel(level) {
   if (!fs.existsSync(arsenalDir)) fs.mkdirSync(arsenalDir, { recursive: true });
   let arsenalWritten = 0;
   const arsenalPlayers = [];
+  // ── Per-pitcher BBE-allowed (gb/ld/fb/pu trajectory %) ──
+  // Group hit events by the pitcher who threw them, then compute the same
+  // trajectory mix we already compute for batters.
+  const pitcherBBE = {};
+  for (const e of allBBE) {
+    if (!e.pitcher_id || !e.bb) continue;
+    const key = String(e.pitcher_id);
+    const rec = pitcherBBE[key] || (pitcherBBE[key] = { gb: 0, ld: 0, fb: 0, pu: 0, n: 0 });
+    if (e.bb === 'ground_ball') rec.gb++;
+    else if (e.bb === 'line_drive') rec.ld++;
+    else if (e.bb === 'fly_ball') rec.fb++;
+    else if (e.bb === 'popup') rec.pu++;
+    rec.n++;
+  }
+
   for (const [pid, rec] of Object.entries(byPitcher)) {
     if (rec.pitches.length < MIN_PITCHES_FOR_ARSENAL) continue;
     const arsenal = aggregateArsenal(rec.pitches);
@@ -503,13 +568,23 @@ async function processLevel(level) {
       else if (p.throws === 'L') lH++;
     }
     const throws = rH >= lH ? (rH > 0 ? 'R' : null) : 'L';
+    // Pitcher batted-ball summary for the new Batted-Ball Profile panel.
+    const bb = pitcherBBE[pid];
+    const bbe_against = bb && bb.n >= 10 ? {
+      n: bb.n,
+      gb_pct: +(100 * bb.gb / bb.n).toFixed(1),
+      ld_pct: +(100 * bb.ld / bb.n).toFixed(1),
+      fb_pct: +(100 * bb.fb / bb.n).toFixed(1),
+      pu_pct: +(100 * bb.pu / bb.n).toFixed(1),
+    } : null;
     const data = {
       player_id: parseInt(pid, 10),
       name: rec.name,
       throws: throws,
       last_updated: new Date().toISOString(),
       total_pitches: rec.pitches.length,
-      arsenal: arsenal
+      arsenal: arsenal,
+      bbe_against: bbe_against,
     };
     fs.writeFileSync(path.join(arsenalDir, pid + '.json'), JSON.stringify(data));
     arsenalWritten++;

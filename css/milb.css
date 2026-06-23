@@ -637,3 +637,34 @@
   display:inline-block; width:8px; height:8px; border-radius:50%;
   margin-right:4px; vertical-align:middle;
 }
+
+/* ─── Batted-Ball Distribution (text + bars) ───────────────────────── */
+.bb-dist-group { margin-bottom: 12px; }
+.bb-dist-group:last-child { margin-bottom: 0; }
+.bb-dist-h {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #5e574e; margin-bottom: 6px;
+}
+.bb-dist-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 140px;
+  align-items: center; gap: 10px;
+  padding: 3px 0;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px;
+}
+.bb-dist-lbl { color: #1d1916; font-weight: 600; }
+.bb-dist-bar {
+  height: 8px; background: rgba(45,36,24,.08);
+  border-radius: 4px; overflow: hidden;
+}
+.bb-dist-fill {
+  height: 100%; background: #b7472a;
+  border-radius: 4px; transition: width .15s;
+}
+.bb-dist-val { color: #1d1916; text-align: right; }
+.bb-dist-delta {
+  font-size: 10px; margin-left: 4px;
+}
+.bb-dist-delta.diff-good { color: #047857; }
+.bb-dist-delta.diff-bad  { color: #b7472a; }

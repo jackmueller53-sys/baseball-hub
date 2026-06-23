@@ -229,8 +229,17 @@
     const xPad = (xMax - xMin) * 0.08 || 1, yPad = (yMax - yMin) * 0.08 || 1;
     const xLo = xMin - xPad, xHi = xMax + xPad;
     const yLo = yMin - yPad, yHi = yMax + yPad;
-    const sx = (v) => PAD.l + ((v - xLo) / (xHi - xLo)) * IW;
-    const sy = (v) => PAD.t + IH - ((v - yLo) / (yHi - yLo)) * IH;
+    // Axis orientation: when a stat's "good" direction is LOWER (ERA, FIP,
+    // ERA−, K%-against, etc., dir === -1), invert the mapping so elite
+    // teams still plot toward the upper-right of the chart. Ticks invert
+    // naturally because we generate them from the same domain endpoints.
+    const xFlip = xA.dir === -1, yFlip = yA.dir === -1;
+    const sx = (v) => xFlip
+      ? PAD.l + IW - ((v - xLo) / (xHi - xLo)) * IW
+      : PAD.l + ((v - xLo) / (xHi - xLo)) * IW;
+    const sy = (v) => yFlip
+      ? PAD.t + ((v - yLo) / (yHi - yLo)) * IH
+      : PAD.t + IH - ((v - yLo) / (yHi - yLo)) * IH;
 
     // Means for quadrants
     const xAvg = xVals.reduce((a, b) => a + b, 0) / xVals.length;

@@ -5,9 +5,21 @@ var sortCol = 'overall';
 var sortDir = 'desc';
 var _historyLoadPromise = null;
 
+// stuffplus-custom.json stores names as "Last, First" (Statcast format).
+// Users searching for "Josh Hader" or "Chad Dallas" find nothing because
+// every row is "Hader, Josh" / "Dallas, Chad". Normalize once on load.
+function _natural(n) {
+  if (!n || typeof n !== 'string') return n || 'Unknown';
+  var i = n.indexOf(',');
+  if (i < 0) return n.trim();
+  var last = n.slice(0, i).trim();
+  var first = n.slice(i + 1).trim();
+  return (first ? first + ' ' : '') + last;
+}
+
 function _mapHistoryRow(r) {
   return {
-    pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
+    pitcher: r.p, name: _natural(r.n), team: r.t || '', season: r.s,
     overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
     totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
     era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
@@ -378,7 +390,7 @@ async function load2026StuffPlus() {
           // Merge into allRows, converting to the format loadData() produces
           rows2026.forEach(function(r) {
             allRows.push({
-              pitcher: r.p, name: r.n || 'Unknown', team: r.t || '', season: r.s,
+              pitcher: r.p, name: _natural(r.n), team: r.t || '', season: r.s,
               overall: r.ov, fb: r.fb, brk: r.bk, off: r.of,
               totalPitches: r.tp || 0, fbPitches: r.fp || 0, brkPitches: r.bp || 0, offPitches: r.op || 0,
               era: r.era, fip: r.fip, xfip: r.xfp, xera: r.xer,
