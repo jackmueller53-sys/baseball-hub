@@ -492,6 +492,36 @@ async function processLevel(level) {
     bbeWritten++;
     if (agg && agg.n >= MIN_BBE_FOR_LEAGUE_AVG) allAggs.push(agg);
   }
+
+  // ── Per-pitcher BBE shards (events the pitcher allowed) ──
+  // Same shape as batter shards: { player_id, agg, events }. Feeds the new
+  // pitcher-card Spray Chart panel; the pitcher card's own bbe_against block
+  // on the arsenal shard still drives the bar chart.
+  const bbePitDir = path.join(MILB_DIR, level.key, 'bbe-pit');
+  if (!fs.existsSync(bbePitDir)) fs.mkdirSync(bbePitDir, { recursive: true });
+  const eventsByPitcher = {};
+  for (const e of allBBE) {
+    if (!e.pitcher_id) continue;
+    const key = String(e.pitcher_id);
+    if (!eventsByPitcher[key]) eventsByPitcher[key] = [];
+    eventsByPitcher[key].push({
+      d: e.d, x: e.x, y: e.y, ev: e.ev, la: e.la, bb: e.bb,
+      dist: e.dist, e: e.e, s: e.stand
+    });
+  }
+  let bbePitWritten = 0;
+  for (const [pid, events] of Object.entries(eventsByPitcher)) {
+    if (events.length === 0) continue;
+    const agg = aggregateForBatter(events);   // same trajectory/spray math
+    const data = {
+      player_id: parseInt(pid, 10),
+      last_updated: new Date().toISOString(),
+      agg: agg,
+      events: events
+    };
+    fs.writeFileSync(path.join(bbePitDir, pid + '.json'), JSON.stringify(data));
+    bbePitWritten++;
+  }
   // ── League-average summary (consumed by the card QoC "vs Avg" column) ──
   // Mean of each Quality-of-Contact metric across players with a meaningful
   // batted-ball sample, written once per level so cards never aggregate

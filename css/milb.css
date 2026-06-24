@@ -668,3 +668,22 @@
 }
 .bb-dist-delta.diff-good { color: #047857; }
 .bb-dist-delta.diff-bad  { color: #b7472a; }
+
+/* ─── Spray-chart distribution panel (under SVG) ───────────────────── */
+.bbp-dist-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(45,36,24,.08);
+}
+.bbp-dist-grid .bbp-dist { margin: 0; }
+.bbp-dist-grid .bbp-section-lbl {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #5e574e; margin-bottom: 6px;
+}
+@media (max-width: 800px) {
+  .bbp-dist-grid { grid-template-columns: 1fr; gap: 12px; }
+}

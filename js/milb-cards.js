@@ -76,6 +76,23 @@ function bbeShardPath(levelLabel, playerId) {
 
 // In-memory cache so re-opening a card doesn't re-fetch.
 var _bbeCache = {};
+var _bbePitCache = {};
+
+function bbePitShardPath(levelLabel, playerId) {
+  var lvl = (levelLabel || '').toLowerCase();
+  if (lvl !== 'aaa' && lvl !== 'fsl') return null;
+  return '../data/milb/' + lvl + '/bbe-pit/' + playerId + '.json';
+}
+function fetchBBEPit(levelLabel, playerId) {
+  var key = (levelLabel || '') + ':' + playerId;
+  if (_bbePitCache[key] !== undefined) return Promise.resolve(_bbePitCache[key]);
+  var url = bbePitShardPath(levelLabel, playerId);
+  if (!url) { _bbePitCache[key] = null; return Promise.resolve(null); }
+  return fetch(url, { cache: 'default' })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .catch(function () { return null; })
+    .then(function (d) { _bbePitCache[key] = d || null; return d || null; });
+}
 
 function fetchBBE(levelLabel, playerId) {
   var key = (levelLabel || '') + ':' + playerId;
@@ -521,6 +538,30 @@ function bbpDistribution(agg) {
     + '</div>';
 }
 
+// Spray-direction distribution (Pull / Center / Oppo) — same row shape as
+// trajectory distribution. Color-coded for consistency with the spray cone.
+function bbpSprayPctRows(agg) {
+  return '<div class="bbp-dist">'
+    +  '<div class="bbp-section-lbl">Spray Angle</div>'
+    +  bbpDistributionRow('Pull',   agg.pull_pct,   '#B91C1C')
+    +  bbpDistributionRow('Center', agg.center_pct, '#047857')
+    +  bbpDistributionRow('Oppo',   agg.oppo_pct,   '#1D4ED8')
+    + '</div>';
+}
+
+// Combined "Spray Chart" panel content — the existing SVG (with dots) plus
+// the two distribution lists (trajectory + spray angle) beneath it.
+function sprayChartWithDistribution(bbe) {
+  if (!bbe || !bbe.events || !bbe.events.length) {
+    return sprayChartSVG(null);
+  }
+  return sprayChartSVG(bbe.events)
+    + '<div class="bbp-dist-grid">'
+    +   bbpDistribution(bbe.agg || {})
+    +   bbpSprayPctRows(bbe.agg || {})
+    + '</div>';
+}
+
 // 3-cone spray-direction triangle, RHB-perspective (LHB cone is mirrored
 // in the data already since classifySpray flips by stand).
 function bbpSprayCone(agg, stand) {
@@ -780,7 +821,14 @@ function renderHitter(p, lg, levelLabel, hitters) {
     +     '</div>'
     +   '</div>'
     +   '<div class="pc-body">'
-    // Row 1: Quality of Contact (lazy from BBE shard) + Plate Discipline
+    // Row 1: Spray Chart with distribution beneath (full width, lazy from BBE)
+    +     '<div class="pc-row">'
+    +       '<div class="chart-panel" data-bbe-target="spray-' + (p.player_id || '0') + '">'
+    +         '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>'
+    +         '<div class="bbp-loading">Loading Statcast events…</div>'
+    +       '</div>'
+    +     '</div>'
+    // Row 2: Quality of Contact (lazy from BBE shard) + Plate Discipline
     +     '<div class="pc-row pc-row-2col">'
     +       '<div class="chart-panel bbp-panel" data-bbe-target="bbp-' + (p.player_id || '0') + '">'
     +         '<div class="cp-title">Quality of Contact<span class="cp-src cp-src-mlb">Statcast</span></div>'
@@ -803,14 +851,7 @@ function renderHitter(p, lg, levelLabel, hitters) {
     +         hitterVsTable(p, lg || {}, hitters, levelLabel, qualified)
     +       '</div>'
     +     '</div>'
-    // Row 3: Batted-Ball distribution as text + percentages (lazy from BBE shard)
-    +     '<div class="pc-row">'
-    +       '<div class="chart-panel" data-bbdist-target="' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Batted-Ball Distribution<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         battedBallProfileLoading()
-    +       '</div>'
-    +     '</div>'
-    +     '<div class="pc-footnote">Quality of Contact + batted-ball distribution from Statcast per-event hit_data. Percentile vs ' + escapeHtml(levelLabel) + ' hitters with qualified PA. Z-Contact% / O-Contact% derived from per-pitch plate location (proxy zone: |pX| ≤ 0.83 ft, 1.5 ≤ pZ ≤ 3.5 ft).</div>'
+    +     '<div class="pc-footnote">Spray chart, trajectory + angle distribution, and Quality of Contact from Statcast per-event hit_data. Percentile vs ' + escapeHtml(levelLabel) + ' hitters with qualified PA. Z-Contact% / O-Contact% derived from per-pitch plate location (proxy zone: |pX| ≤ 0.83 ft, 1.5 ≤ pZ ≤ 3.5 ft).</div>'
     +   '</div>'
     + '</div>';
 }
@@ -971,6 +1012,13 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     +         bbProfileHtml
     +       '</div>'
     +     '</div>'
+    // Row 5: Spray Chart of events allowed (full width, lazy from bbe-pit shard)
+    +     '<div class="pc-row">'
+    +       '<div class="chart-panel" data-bbe-pit-target="spray-' + (p.player_id || '0') + '">'
+    +         '<div class="cp-title">Spray Chart <em style="font-style:normal;color:var(--fg2);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">— batted balls allowed</em><span class="cp-src cp-src-mlb">Statcast</span></div>'
+    +         '<div class="bbp-loading">Loading Statcast events…</div>'
+    +       '</div>'
+    +     '</div>'
     +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast pitchArsenal + per-event hit_data. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
     +   '</div>'
     + '</div>';
@@ -992,8 +1040,8 @@ function hydrateBBE(player, levelLabel, lg) {
     fetchBbeLeagueAvg(levelLabel)
   ]).then(function (res) {
     var bbe = res[0], lgFile = res[1];
-    var bbpEl    = document.querySelector('[data-bbe-target="bbp-' + player.player_id + '"]');
-    var bbDistEl = document.querySelector('[data-bbdist-target="' + player.player_id + '"]');
+    var sprayEl = document.querySelector('[data-bbe-target="spray-' + player.player_id + '"]');
+    var bbpEl   = document.querySelector('[data-bbe-target="bbp-' + player.player_id + '"]');
     var src = (lgFile && lgFile.avg) || {};
     var lgAgg = {
       avg_ev: src.avg_ev, max_ev: src.max_ev,
@@ -1004,13 +1052,13 @@ function hydrateBBE(player, levelLabel, lg) {
       z_contact_pct: src.z_contact_pct, o_contact_pct: src.o_contact_pct,
       chase_pct: src.chase_pct
     };
+    if (sprayEl) {
+      var s = '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>';
+      sprayEl.innerHTML = s + sprayChartWithDistribution(bbe);
+    }
     if (bbpEl) {
       var t = '<div class="cp-title">Quality of Contact<span class="cp-src cp-src-mlb">Statcast</span></div>';
       bbpEl.innerHTML = t + battedBallProfileFromBBE(bbe, lgAgg, player);
-    }
-    if (bbDistEl) {
-      var t2 = '<div class="cp-title">Batted-Ball Distribution<span class="cp-src cp-src-mlb">Statcast</span></div>';
-      bbDistEl.innerHTML = t2 + bbDistributionText(bbe, lgAgg);
     }
   });
 }
@@ -1092,6 +1140,15 @@ function hydrateArsenal(player, levelLabel) {
         var lg = (lgFile && lgFile.avg) || {};
         var bb = data && data.bbe_against;
         bbPitEl.innerHTML = bbTitle + renderPitcherBattedBallBars(bb, lg);
+      });
+    }
+    // Pitcher Spray Chart panel — fetches the per-pitcher BBE shard and
+    // renders the same SVG + distribution stack we use on the hitter card.
+    var sprayPitEl = document.querySelector('[data-bbe-pit-target="spray-' + player.player_id + '"]');
+    if (sprayPitEl) {
+      fetchBBEPit(levelLabel, player.player_id).then(function (bbe) {
+        var t = '<div class="cp-title">Spray Chart <em style="font-style:normal;color:var(--fg2);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">— batted balls allowed</em><span class="cp-src cp-src-mlb">Statcast</span></div>';
+        sprayPitEl.innerHTML = t + sprayChartWithDistribution(bbe);
       });
     }
   });
