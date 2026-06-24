@@ -3004,6 +3004,38 @@ function getSeasonThresholds(){
   return { daysIn, fgQualBat, fgQualPit, svMin, minAB, minIP };
 }
 
+// ── FG staleness banner ─────────────────────────────────────────────────────
+// When meta.errors lists FG endpoints (Cloudflare 403) but the deploy still
+// ran, Savant + sprint refreshed and FG was preserved from the last good
+// snapshot. Show a small banner so users know which columns are aging.
+function maybeShowFgStaleBanner(meta){
+  // Tear down any previous banner so this can re-run safely.
+  const old = document.getElementById("fg-stale-banner");
+  if (old) old.remove();
+  if (!meta || !Array.isArray(meta.errors)) return;
+  const fgErrors = meta.errors.filter(e => /^FG\s/i.test(e));
+  if (fgErrors.length === 0) return;
+  // Find the most recent commit-touched-fg-pit time as a proxy for the
+  // last good FG snapshot. We can't read commit history client-side, but we
+  // can probe the file's HTTP Last-Modified.
+  fetch("data/fg-pit.json", { method: "HEAD" }).then(r => {
+    const lm = r.headers.get("last-modified");
+    const lastFG = lm ? new Date(lm).toLocaleString() : "unknown";
+    const ageHrs = lm ? Math.round((Date.now() - new Date(lm).getTime()) / 36e5) : null;
+    const ageTxt = ageHrs != null ? (ageHrs < 36 ? `${ageHrs}h ago` : `~${Math.round(ageHrs/24)}d ago`) : "—";
+    const host = "fg-stale-banner";
+    const html = `<div id="${host}" class="fg-stale-banner">
+      <span class="fg-stale-icon">⚠</span>
+      <strong>FanGraphs columns stale</strong>
+      <span class="fg-stale-detail">— wRC+ / WAR / ERA / FIP / Stuff+ are from the last good snapshot (${ageTxt}).
+      Savant (xwOBA, Barrel%, EV) refreshed today. FG endpoints are returning HTTP 403 (Cloudflare).</span>
+    </div>`;
+    // Inject above the source-info bar so it sits at the top of the explorer
+    const srcBar = document.getElementById("explorer-src-bar");
+    if (srcBar) srcBar.insertAdjacentHTML("beforebegin", html);
+  }).catch(() => { /* HEAD failed, no banner */ });
+}
+
 // ── STATIC 2026 DATA LOADER — loads from pre-fetched static JSON files ──
 // Fetches data/fg-bat.json, data/fg-pit.json, data/fg-disc-pit.json, data/sv-bat.json,
 // data/sv-pit.json, data/sv-sprint.json, and data/meta.json (all saved by GitHub Actions).
@@ -3057,13 +3089,18 @@ async function loadStaticData2026(){
     setProg(19, "Loading static Savant sprint...");
     spd = await fetchStaticFile("sv-sprint.json") || [];
 
-    // Record snapshot age for the background-refresh gate.
+    // Record snapshot age for the background-refresh gate AND surface a
+    // staleness banner when meta.errors mentions FG — Cloudflare has been
+    // sporadically blocking FG endpoints; on those days Savant still flows
+    // (and the meta updates) but FG-derived columns (wRC+, WAR, ERA, etc.)
+    // come from the last good preserved snapshot. Users deserve to see that.
     try {
       const meta = await fetchStaticFile("meta.json");
       if (meta && meta.fetchedAt) {
         const fetchedAt = Date.parse(meta.fetchedAt);
         if (!isNaN(fetchedAt)) DB[2026]._snapshotFetchedAt = fetchedAt;
       }
+      maybeShowFgStaleBanner(meta);
     } catch(_) { /* meta is best-effort */ }
 
     // If we got at least FG batting or pitching data, merge and store

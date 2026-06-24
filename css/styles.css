@@ -703,3 +703,25 @@ tr:hover td{background:rgba(0,0,0,.02)}
   .teams-grid { grid-template-columns:1fr 1fr; }
   .tc-marks { margin-left:0; }
 }
+
+/* ─── FG staleness banner (Stats Explorer) ─────────────────────────── */
+.fg-stale-banner {
+  background: #fff3e0;
+  border-bottom: 1px solid #f5a623;
+  padding: 6px 24px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  color: #6e4a0c;
+  display: flex; align-items: center; gap: 6px;
+}
+.fg-stale-banner strong {
+  font-family: 'Barlow Condensed', system-ui, sans-serif;
+  font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: #92400E;
+}
+.fg-stale-icon { font-size: 13px; }
+.fg-stale-detail { color: #6e4a0c; opacity: .85; }
+@media (prefers-color-scheme: dark) {
+  .fg-stale-banner { background: #2b1f0a; color: #f5d997; border-bottom-color: #d97706; }
+  .fg-stale-banner strong, .fg-stale-detail { color: #f5d997; }
+}
