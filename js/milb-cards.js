@@ -1005,14 +1005,10 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     +         pitcherVsTable(p, lg, pitchers, levelLabel, qualified)
     +       '</div>'
     +     '</div>'
-    // Row 4: Batted-Ball Profile (GB/FB/LD/PU as percentile bars; lazy)
-    +     '<div class="pc-row">'
-    +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '" data-bbpit-target="' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Batted-Ball Profile<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         bbProfileHtml
-    +       '</div>'
-    +     '</div>'
-    // Row 5: Spray Chart of events allowed (full width, lazy from bbe-pit shard)
+    // Row 4: Spray Chart of events allowed + GB/FB/LD/PU + Pull/Cent/Oppo
+    // distribution rows beneath. Replaces the prior percentile-bars panel —
+    // both visualised the same trajectory data; this version is consistent
+    // with the hitter card's spray panel.
     +     '<div class="pc-row">'
     +       '<div class="chart-panel" data-bbe-pit-target="spray-' + (p.player_id || '0') + '">'
     +         '<div class="cp-title">Spray Chart <em style="font-style:normal;color:var(--fg2);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">— batted balls allowed</em><span class="cp-src cp-src-mlb">Statcast</span></div>'
