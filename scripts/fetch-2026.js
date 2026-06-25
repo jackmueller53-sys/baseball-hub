@@ -196,23 +196,65 @@ function getSeasonThresholds() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // FanGraphs JSON leaderboard
+// ── FG fetch with adaptive pagination ────────────────────────────────────
+// type=8 leaderboards return ~3 MB / call; corsproxy.io free tier rejects
+// "server-side" requests and allorigins truncates/fails large responses, so
+// the single-page request comes back as 403 / non-JSON. Fix: try the
+// single-page call first (cheap when direct or a healthy proxy succeeds),
+// then on failure paginate at pageitems=150 (~250 KB per page) which both
+// fallback proxies handle reliably. type=36 (Stuff+ / Pitching+) and
+// type=7 (plate discipline) stay single-shot — they're already small.
 async function fetchFG(type, qual, fgType = 8) {
-  const url = `https://www.fangraphs.com/api/leaders/major-league/data`
-    + `?pos=all&stats=${type}&lg=all&qual=${qual}&type=${fgType}`
-    + `&season=${SEASON}&season1=${SEASON}&ind=0&team=0&pageitems=2000&pagenum=1`;
+  const buildUrl = (pageitems, pagenum) =>
+    `https://www.fangraphs.com/api/leaders/major-league/data`
+      + `?pos=all&stats=${type}&lg=all&qual=${qual}&type=${fgType}`
+      + `&season=${SEASON}&season1=${SEASON}&ind=0&team=0`
+      + `&pageitems=${pageitems}&pagenum=${pagenum}`;
 
   console.log(`  Fetching FG ${type} type=${fgType} qual=${qual}...`);
-  const text = await fetchURL(url);
 
-  let parsed;
-  try { parsed = JSON.parse(text); } catch (e) {
-    throw new Error(`FG ${type} type=${fgType}: invalid JSON — ${text.slice(0, 200)}`);
+  // ── Attempt 1: single big request (succeeds when direct or proxy works) ──
+  try {
+    const text = await fetchURL(buildUrl(2000, 1));
+    const parsed = JSON.parse(text);
+    const rows = parsed.data || parsed;
+    const arr = Array.isArray(rows) ? rows : [];
+    console.log(`    → ${arr.length} rows (single page)`);
+    return arr;
+  } catch (e) {
+    // Only paginate for the large type=8 leaderboards — small types should
+    // already have succeeded via the proxy chain, so further attempts are
+    // unlikely to help.
+    if (fgType !== 8) throw e;
+    console.warn(`    single-page failed (${e.message.slice(0, 80)}…); trying paginated mode`);
   }
 
-  const rows = parsed.data || parsed;
-  const arr = Array.isArray(rows) ? rows : [];
-  console.log(`    → ${arr.length} rows`);
-  return arr;
+  // ── Attempt 2: paginated (~250 KB per page, proxy-friendly) ──────────────
+  const PAGE = 150;
+  const MAX_PAGES = 12;   // 12 × 150 = 1800 rows; covers all qualified slots
+  const all = [];
+  let lastErr = null;
+  for (let pg = 1; pg <= MAX_PAGES; pg++) {
+    let chunk;
+    try {
+      const text = await fetchURL(buildUrl(PAGE, pg));
+      const parsed = JSON.parse(text);
+      chunk = parsed.data || parsed;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`    page ${pg} failed: ${e.message.slice(0, 80)}`);
+      if (pg === 1) throw e;   // can't even get page 1 — give up
+      break;                   // partial: stop after first mid-stream failure
+    }
+    if (!Array.isArray(chunk) || chunk.length === 0) break;  // end of data
+    all.push(...chunk);
+    if (chunk.length < PAGE) break;   // FG returned a short page — we're done
+  }
+  if (all.length === 0) {
+    throw lastErr || new Error(`FG ${type} type=${fgType}: paginated mode returned 0 rows`);
+  }
+  console.log(`    → ${all.length} rows (paginated, ${Math.ceil(all.length / PAGE)} pages)`);
+  return all;
 }
 
 // Savant Expected Stats (returns CSV)
