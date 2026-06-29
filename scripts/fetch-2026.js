@@ -222,38 +222,63 @@ async function fetchFG(type, qual, fgType = 8) {
     console.log(`    → ${arr.length} rows (single page)`);
     return arr;
   } catch (e) {
-    // Only paginate for the large type=8 leaderboards — small types should
-    // already have succeeded via the proxy chain, so further attempts are
-    // unlikely to help.
-    if (fgType !== 8) throw e;
     console.warn(`    single-page failed (${e.message.slice(0, 80)}…); trying paginated mode`);
   }
 
-  // ── Attempt 2: paginated (~250 KB per page, proxy-friendly) ──────────────
-  const PAGE = 150;
-  const MAX_PAGES = 12;   // 12 × 150 = 1800 rows; covers all qualified slots
+  // ── Attempt 2: adaptive multi-tier pagination ───────────────────────────
+  // Each FG row carries ~1.5 KB of nested per-pitch-type fields, so a 150-
+  // row page is ~225 KB — large enough to clear the proxy size cap for
+  // qualified pitchers (150 rows total) but page 1 itself fails for the FG
+  // batter leaderboard (~330 rows of larger payload). Strategy: try
+  // PAGE_TIERS in order; first tier whose page 1 returns a non-empty page
+  // wins, then we keep paginating at that size to completion.
+  const PAGE_TIERS = [150, 60, 25];
+  const MAX_PAGES = 30;   // generous upper bound across all tiers
+  let chosenPage = 0;
   const all = [];
   let lastErr = null;
-  for (let pg = 1; pg <= MAX_PAGES; pg++) {
-    let chunk;
+
+  for (const PAGE of PAGE_TIERS) {
+    let firstChunk;
     try {
-      const text = await fetchURL(buildUrl(PAGE, pg));
+      const text = await fetchURL(buildUrl(PAGE, 1));
       const parsed = JSON.parse(text);
-      chunk = parsed.data || parsed;
+      firstChunk = parsed.data || parsed;
     } catch (e) {
       lastErr = e;
-      console.warn(`    page ${pg} failed: ${e.message.slice(0, 80)}`);
-      if (pg === 1) throw e;   // can't even get page 1 — give up
-      break;                   // partial: stop after first mid-stream failure
+      console.warn(`    pageitems=${PAGE} failed on page 1: ${e.message.slice(0, 60)}`);
+      continue;
     }
-    if (!Array.isArray(chunk) || chunk.length === 0) break;  // end of data
-    all.push(...chunk);
-    if (chunk.length < PAGE) break;   // FG returned a short page — we're done
+    if (!Array.isArray(firstChunk) || firstChunk.length === 0) {
+      console.warn(`    pageitems=${PAGE}: page 1 empty`);
+      continue;
+    }
+    chosenPage = PAGE;
+    all.push(...firstChunk);
+    if (firstChunk.length < PAGE) break;
+
+    for (let pg = 2; pg <= MAX_PAGES; pg++) {
+      let chunk;
+      try {
+        const text = await fetchURL(buildUrl(PAGE, pg));
+        const parsed = JSON.parse(text);
+        chunk = parsed.data || parsed;
+      } catch (e) {
+        lastErr = e;
+        console.warn(`    page ${pg} (size ${PAGE}) failed — keeping ${all.length} rows`);
+        break;
+      }
+      if (!Array.isArray(chunk) || chunk.length === 0) break;
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+    }
+    break;   // made progress at this tier
   }
+
   if (all.length === 0) {
     throw lastErr || new Error(`FG ${type} type=${fgType}: paginated mode returned 0 rows`);
   }
-  console.log(`    → ${all.length} rows (paginated, ${Math.ceil(all.length / PAGE)} pages)`);
+  console.log(`    → ${all.length} rows (paginated @ pageitems=${chosenPage})`);
   return all;
 }
 
