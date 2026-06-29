@@ -238,21 +238,70 @@ function parseProxyJSON(text, label){
 async function fetchFG(season, type, qual, opts){
   qual = qual || "y";
   opts = opts || {};
-  // FanGraphs type=8 = Value/Dashboard (standard). pageitems=2000 to capture full roster,
-  // especially early in season when qual thresholds are very low.
-  let url = "https://www.fangraphs.com/api/leaders/major-league/data"
-    + "?pos=all&stats="+type+"&lg=all&qual="+qual+"&type=8"
-    + "&season="+season+"&season1="+season+"&ind=0&team=0&pageitems=2000&pagenum=1";
-  // Append date range if provided — FG uses startdate/enddate + month=1000 for custom range
-  if(opts.startdate && opts.enddate){
-    url += "&month=1000&startdate="+opts.startdate+"&enddate="+opts.enddate;
-    console.log(`[fetchFG] Date range: ${opts.startdate} → ${opts.enddate}`);
+  // FanGraphs type=8 = Value/Dashboard (standard). The single-page request
+  // (~3 MB) reliably trips the CORS-proxy size cap, so when the single shot
+  // returns 0 rows we walk down PAGE_TIERS (matches scripts/fetch-2026.js).
+  const buildUrl = (pageitems, pagenum) => {
+    let u = "https://www.fangraphs.com/api/leaders/major-league/data"
+      + "?pos=all&stats="+type+"&lg=all&qual="+qual+"&type=8"
+      + "&season="+season+"&season1="+season+"&ind=0&team=0"
+      + "&pageitems="+pageitems+"&pagenum="+pagenum;
+    if (opts.startdate && opts.enddate) {
+      u += "&month=1000&startdate="+opts.startdate+"&enddate="+opts.enddate;
+    }
+    return u;
+  };
+
+  // ── Attempt 1: single-page (fast when direct or healthy proxy) ──
+  try {
+    const r = await proxyFetch(buildUrl(2000, 1));
+    const text = await r.text();
+    const rows = parseProxyJSON(text, "FG-"+type);
+    if (Array.isArray(rows) && rows.length > 0) {
+      console.log(`[fetchFG] season=${season} type=${type} qual=${qual} → ${rows.length} rows (single page)`);
+      return rows;
+    }
+    console.warn(`[fetchFG] single-page returned 0 rows — trying paginated mode`);
+  } catch (e) {
+    console.warn(`[fetchFG] single-page threw: ${(e && e.message || e).toString().slice(0,60)} — trying paginated mode`);
   }
-  const r = await proxyFetch(url);
-  const text = await r.text();
-  const rows = parseProxyJSON(text, "FG-"+type);
-  console.log(`[fetchFG] season=${season} type=${type} qual=${qual} → ${rows.length} rows`);
-  return rows;
+
+  // ── Attempt 2: adaptive multi-tier pagination ──
+  const PAGE_TIERS = [150, 60, 25];
+  const MAX_PAGES = 30;
+  let chosen = 0;
+  const all = [];
+  for (const PAGE of PAGE_TIERS) {
+    let first;
+    try {
+      const r = await proxyFetch(buildUrl(PAGE, 1));
+      const text = await r.text();
+      first = parseProxyJSON(text, "FG-"+type);
+    } catch (e) {
+      console.warn(`[fetchFG] pageitems=${PAGE} page 1 threw: ${(e.message||e).toString().slice(0,60)}`);
+      continue;
+    }
+    if (!Array.isArray(first) || first.length === 0) continue;
+    chosen = PAGE; all.push(...first);
+    if (first.length < PAGE) break;
+    for (let pg = 2; pg <= MAX_PAGES; pg++) {
+      let chunk;
+      try {
+        const r = await proxyFetch(buildUrl(PAGE, pg));
+        const text = await r.text();
+        chunk = parseProxyJSON(text, "FG-"+type);
+      } catch (e) {
+        console.warn(`[fetchFG] page ${pg} (size ${PAGE}) failed — keeping ${all.length} rows`);
+        break;
+      }
+      if (!Array.isArray(chunk) || chunk.length === 0) break;
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+    }
+    break;
+  }
+  console.log(`[fetchFG] season=${season} type=${type} qual=${qual} → ${all.length} rows (paginated @ pageitems=${chosen})`);
+  return all;
 }
 
 // Fetch FanGraphs Pitching+ / Stuff+ metrics (type=36) for a given season
@@ -2885,20 +2934,34 @@ function setDatePreset(btn){
   document.querySelectorAll(".dp-btn").forEach(b=>b.classList.remove("dp-active"));
   btn.classList.add("dp-active");
 
+  // Optional date-from / date-to inputs aren't present in the current
+  // index.html (custom range UI was removed). Guard against null lookups
+  // so the function reaches the loadLive2026 call below — without these
+  // guards a TypeError here silently aborted the click handler, leaving
+  // the dashboard stuck on full-season data.
+  function setVal(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.value = v;
+  }
+  function setTxt(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = v;
+  }
+
   const range = btn.getAttribute("data-range");
   if(range === "full"){
     _dateRange = null;
-    document.getElementById("date-from").value = "";
-    document.getElementById("date-to").value = "";
-    document.getElementById("date-note").textContent = "Full season stats";
+    setVal("date-from", "");
+    setVal("date-to",   "");
+    setTxt("date-note", "Full season stats");
   } else {
     const days = parseInt(range);
     const end = new Date();
     const start = new Date(end); start.setDate(start.getDate() - days);
     _dateRange = { startdate: fmtDate(start), enddate: fmtDate(end), label: "Last "+days+"d" };
-    document.getElementById("date-from").value = _dateRange.startdate;
-    document.getElementById("date-to").value = _dateRange.enddate;
-    document.getElementById("date-note").textContent = "FG: date-filtered · Savant: full season";
+    setVal("date-from", _dateRange.startdate);
+    setVal("date-to",   _dateRange.enddate);
+    setTxt("date-note", "FG: date-filtered · Savant: full season");
   }
 
   // Clear cache for this range and reload
@@ -3157,24 +3220,32 @@ async function loadLive2026(forceRefresh){
 
   try {
     // ── Step 0: Try loading from static files first (instant load) ──
-    setProg(0,"Loading static data (GitHub Actions fetch)...");
-    staticLoaded = await loadStaticData2026();
+    // SKIP this when a date range is active — the static files only contain
+    // full-season data (rebuilt nightly by GitHub Actions). For Last-7/14/30d
+    // views we need a live, date-filtered FG pull so the dashboard actually
+    // reflects the selected window.
+    if (_dateRange) {
+      console.log("[loadLive2026] date range active (" + _dateRange.label
+        + ") — bypassing static cache, going straight to live fetch.");
+    } else {
+      setProg(0,"Loading static data (GitHub Actions fetch)...");
+      staticLoaded = await loadStaticData2026();
 
-    if(staticLoaded){
-      setProg(30,"Static data loaded, rendering...");
-      const rangeSuffix = _dateRange ? " · "+_dateRange.label : "";
-      badge.textContent = "2026 STATIC" + rangeSuffix;
-      badge.className = "s-badge badge-live";
-      setTimeout(()=>showBar(false), 600);
-      render();
+      if(staticLoaded){
+        setProg(30,"Static data loaded, rendering...");
+        badge.textContent = "2026 STATIC";
+        badge.className = "s-badge badge-live";
+        setTimeout(()=>showBar(false), 600);
+        render();
 
-      // Background: attempt live refresh for freshest data
-      setProg(30,"Attempting live data refresh in background...");
-      console.log("[loadLive2026] Static data loaded; attempting live refresh in background...");
-      // Schedule a refresh in the background without blocking the UI
-      setTimeout(() => refreshLiveDataInBackground(), 100);
-      _fetching26 = false;
-      return;
+        // Background: attempt live refresh for freshest data
+        setProg(30,"Attempting live data refresh in background...");
+        console.log("[loadLive2026] Static data loaded; attempting live refresh in background...");
+        // Schedule a refresh in the background without blocking the UI
+        setTimeout(() => refreshLiveDataInBackground(), 100);
+        _fetching26 = false;
+        return;
+      }
     }
 
     // ── Step 1: Fetch FanGraphs data (JSON via CORS proxy chain) ──
