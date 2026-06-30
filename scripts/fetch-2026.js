@@ -204,14 +204,21 @@ function getSeasonThresholds() {
 // then on failure paginate at pageitems=150 (~250 KB per page) which both
 // fallback proxies handle reliably. type=36 (Stuff+ / Pitching+) and
 // type=7 (plate discipline) stay single-shot — they're already small.
-async function fetchFG(type, qual, fgType = 8) {
+async function fetchFG(type, qual, fgType = 8, dateRange = null) {
+  // dateRange: { startdate: 'YYYY-MM-DD', enddate: 'YYYY-MM-DD' } | null
+  // When set, FG filters the leaderboard to that window via month=1000.
+  const dateSuffix = dateRange
+    ? `&month=1000&startdate=${dateRange.startdate}&enddate=${dateRange.enddate}`
+    : '';
   const buildUrl = (pageitems, pagenum) =>
     `https://www.fangraphs.com/api/leaders/major-league/data`
       + `?pos=all&stats=${type}&lg=all&qual=${qual}&type=${fgType}`
       + `&season=${SEASON}&season1=${SEASON}&ind=0&team=0`
-      + `&pageitems=${pageitems}&pagenum=${pagenum}`;
+      + `&pageitems=${pageitems}&pagenum=${pagenum}`
+      + dateSuffix;
 
-  console.log(`  Fetching FG ${type} type=${fgType} qual=${qual}...`);
+  const rangeNote = dateRange ? ` (${dateRange.startdate}..${dateRange.enddate})` : '';
+  console.log(`  Fetching FG ${type} type=${fgType} qual=${qual}${rangeNote}...`);
 
   // ── Attempt 1: single big request (succeeds when direct or proxy works) ──
   try {
@@ -369,6 +376,45 @@ async function main() {
   try { results.fgPitAll = await fetchFG('pit', 0, 8); }
   catch (e) { errors.push(`FG pit-all: ${e.message}`); results.fgPitAll = []; console.error(`    ERROR: ${e.message}`); }
 
+  // ── FanGraphs Date-range pre-fetches ──
+  // The browser can't reliably fetch date-filtered FG data through CORS
+  // proxies (size cap on the ~1-3 MB type=8 responses). Pre-fetch the
+  // common windows here so the Stats Explorer's date-range buttons can
+  // hit a static file instead. Lower qual thresholds — a 7-day window
+  // produces fewer qualifiers.
+  const today = new Date();
+  function rangeFor(days) {
+    const end = new Date(today);
+    const start = new Date(today); start.setDate(start.getDate() - days);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return { startdate: fmt(start), enddate: fmt(end), days };
+  }
+  results.fgBatRanges = {};
+  results.fgPitRanges = {};
+  for (const days of [7, 14, 30]) {
+    const range = rangeFor(days);
+    // Qual for a rolling window is lower than full-season — give the smallest
+    // window the loosest threshold so we get >0 rows even on slow days.
+    const batQual = days <= 7 ? 5  : days <= 14 ? 15 : 30;
+    const pitQual = days <= 7 ? 3  : days <= 14 ? 8  : 15;
+
+    console.log(`\n[date-range] Last ${days}d (${range.startdate}..${range.enddate})`);
+    try {
+      results.fgBatRanges[days] = await fetchFG('bat', batQual, 8, range);
+    } catch (e) {
+      errors.push(`FG bat ${days}d: ${e.message}`);
+      results.fgBatRanges[days] = [];
+      console.error(`    ERROR bat: ${e.message}`);
+    }
+    try {
+      results.fgPitRanges[days] = await fetchFG('pit', pitQual, 8, range);
+    } catch (e) {
+      errors.push(`FG pit ${days}d: ${e.message}`);
+      results.fgPitRanges[days] = [];
+      console.error(`    ERROR pit: ${e.message}`);
+    }
+  }
+
   // NOTE: FG plate-discipline batting (type=7) historically returns the same
   // payload as type=8 for our use case, and no client code reads the resulting
   // file. Skipping the fetch + write saves ~3 MB per cron run.
@@ -405,6 +451,11 @@ async function main() {
   saveJSON('fg-pit.json', results.fgPit);
   saveJSON('fg-pit-all.json', results.fgPitAll);
   saveJSON('fg-disc-pit.json', results.fgDiscPit);
+  // Date-range pre-fetches (consumed by the Stats Explorer date buttons)
+  for (const days of [7, 14, 30]) {
+    saveJSON(`fg-bat-${days}d.json`, results.fgBatRanges[days] || []);
+    saveJSON(`fg-pit-${days}d.json`, results.fgPitRanges[days] || []);
+  }
   // Slim fg-stuffplus.json to only the ~22 fields the client + python model read.
   // Full FG payload is ~400 cols × 636 rows ≈ 6.4 MB; slim is ~400 KB.
   const FG_STUFFPLUS_KEEP = new Set([
@@ -437,6 +488,12 @@ async function main() {
       fgDiscBat: results.fgDiscBat.length,
       fgDiscPit: results.fgDiscPit.length,
       fgStuffPlus: results.fgStuffPlus.length,
+      fgBat7d:  (results.fgBatRanges && results.fgBatRanges[7]  || []).length,
+      fgBat14d: (results.fgBatRanges && results.fgBatRanges[14] || []).length,
+      fgBat30d: (results.fgBatRanges && results.fgBatRanges[30] || []).length,
+      fgPit7d:  (results.fgPitRanges && results.fgPitRanges[7]  || []).length,
+      fgPit14d: (results.fgPitRanges && results.fgPitRanges[14] || []).length,
+      fgPit30d: (results.fgPitRanges && results.fgPitRanges[30] || []).length,
       svBat: results.svBat.length,
       svPit: results.svPit.length,
       svSprint: results.svSprint.length

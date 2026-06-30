@@ -3099,6 +3099,59 @@ function maybeShowFgStaleBanner(meta){
   }).catch(() => { /* HEAD failed, no banner */ });
 }
 
+// Map a date-range preset label ("Last 30d") to its day count, or null when
+// the label is custom (free-form start/end dates can't hit a preset file).
+function _labelToDays(label) {
+  const m = String(label || '').match(/^Last\s+(7|14|30)d$/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// ── DATE-RANGE STATIC LOADER ────────────────────────────────────────────────
+// Uses the cron-produced data/fg-bat-{days}d.json + fg-pit-{days}d.json files
+// (plus full-season Savant, which has no easy date-filter equivalent).
+async function loadStaticDateRange2026(days) {
+  const { minAB, minIP } = getSeasonThresholds();
+  const dateMinAB = Math.max(1, Math.round(minAB * 0.3));
+  const dateMinIP = Math.max(0.1, minIP * 0.3);
+
+  const fetchFile = async (filename) => {
+    try {
+      const r = await fetch('data/' + filename);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (_) { return null; }
+  };
+
+  const [fgBat, fgPit, discPit, svBat, svPit, spd] = await Promise.all([
+    fetchFile('fg-bat-' + days + 'd.json'),
+    fetchFile('fg-pit-' + days + 'd.json'),
+    fetchFile('fg-disc-pit.json'),   // discipline file is full-season; tolerable
+    fetchFile('sv-bat.json'),
+    fetchFile('sv-pit.json'),
+    fetchFile('sv-sprint.json'),
+  ]);
+
+  // Need at least one FG file with rows — otherwise let the caller fall
+  // through to live fetch (the cron may have hit a 0-row day).
+  const batArr = Array.isArray(fgBat) ? fgBat : [];
+  const pitArr = Array.isArray(fgPit) ? fgPit : [];
+  if (batArr.length === 0 && pitArr.length === 0) return false;
+
+  const newHitters  = batArr.length > 0 ? mergeHitters(batArr, svBat || [], spd || [], dateMinAB) : [];
+  const newPitchers = pitArr.length > 0 ? mergePitchers(pitArr, svPit || [], dateMinIP, discPit || []) : [];
+
+  DB[2026].hitters   = newHitters;
+  DB[2026].pitchers  = newPitchers;
+  DB[2026].loaded    = true;
+  DB[2026].lastFetch = Date.now();
+  rebuildTeamDropdown(2026);
+
+  console.log('[loadStaticDateRange2026] ' + days + 'd: '
+    + 'FG bat=' + batArr.length + ' pit=' + pitArr.length + ' → '
+    + newHitters.length + ' hitters, ' + newPitchers.length + ' pitchers');
+  return true;
+}
+
 // ── STATIC 2026 DATA LOADER — loads from pre-fetched static JSON files ──
 // Fetches data/fg-bat.json, data/fg-pit.json, data/fg-disc-pit.json, data/sv-bat.json,
 // data/sv-pit.json, data/sv-sprint.json, and data/meta.json (all saved by GitHub Actions).
@@ -3220,12 +3273,27 @@ async function loadLive2026(forceRefresh){
 
   try {
     // ── Step 0: Try loading from static files first (instant load) ──
-    // SKIP this when a date range is active — the static files only contain
-    // full-season data (rebuilt nightly by GitHub Actions). For Last-7/14/30d
-    // views we need a live, date-filtered FG pull so the dashboard actually
-    // reflects the selected window.
-    if (_dateRange) {
-      console.log("[loadLive2026] date range active (" + _dateRange.label
+    // When a known date-range preset is active (Last 7/14/30d), look for
+    // the date-specific static files the cron writes (fg-bat-30d.json,
+    // fg-pit-30d.json, …). When the date range matches a preset but no
+    // file is there (or it's empty), fall through to live fetch as a
+    // best-effort recovery path.
+    const presetDays = _dateRange && _labelToDays(_dateRange.label);
+    if (_dateRange && presetDays) {
+      const ok = await loadStaticDateRange2026(presetDays);
+      if (ok) {
+        setProg(30, "Date-range static loaded, rendering…");
+        badge.textContent = "2026 " + _dateRange.label.toUpperCase() + " STATIC";
+        badge.className = "s-badge badge-live";
+        setTimeout(() => showBar(false), 600);
+        render();
+        _fetching26 = false;
+        return;
+      }
+      console.log("[loadLive2026] no date-range static for " + _dateRange.label
+        + " — falling through to live fetch");
+    } else if (_dateRange) {
+      console.log("[loadLive2026] custom date range (" + _dateRange.label
         + ") — bypassing static cache, going straight to live fetch.");
     } else {
       setProg(0,"Loading static data (GitHub Actions fetch)...");
