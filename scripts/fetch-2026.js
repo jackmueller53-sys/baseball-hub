@@ -64,7 +64,11 @@ const BROWSER_HEADERS = {
 const PROXIES = [
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,
+  (u) => `https://thingproxy.freeboard.io/fetch/${u}`,
 ];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function directFetch(url, extraHeaders, maxRedirects = 5) {
   return new Promise((resolve, reject) => {
@@ -114,14 +118,23 @@ async function fetchURL(url) {
         return await directFetch(url);
       } catch (_) { /* fall through to proxies */ }
     }
-    // 2) Proxy fallback chain — same proxies the browser app uses
-    for (let i = 0; i < PROXIES.length; i++) {
-      const proxyUrl = PROXIES[i](url);
-      try {
-        const text = await directFetch(proxyUrl);
-        console.warn(`    (recovered via proxy ${i + 1}/${PROXIES.length})`);
-        return text;
-      } catch (pe) { /* try next */ }
+    // 2) Proxy fallback chain — try each, then on full failure back off and retry
+    //    Cloudflare often 403s a proxy IP for a few seconds after a burst; a
+    //    short sleep clears the gate without us having to add more proxies.
+    const PROXY_BACKOFFS_MS = [0, 8000, 20000];
+    for (let attempt = 0; attempt < PROXY_BACKOFFS_MS.length; attempt++) {
+      if (PROXY_BACKOFFS_MS[attempt] > 0) {
+        console.warn(`    proxies exhausted, backing off ${PROXY_BACKOFFS_MS[attempt] / 1000}s before retry…`);
+        await sleep(PROXY_BACKOFFS_MS[attempt]);
+      }
+      for (let i = 0; i < PROXIES.length; i++) {
+        const proxyUrl = PROXIES[i](url);
+        try {
+          const text = await directFetch(proxyUrl);
+          console.warn(`    (recovered via proxy ${i + 1}/${PROXIES.length}${attempt > 0 ? ` retry ${attempt}` : ''})`);
+          return text;
+        } catch (pe) { /* try next */ }
+      }
     }
     throw new Error(`${msg} from ${url.slice(0, 80)} (all proxies also failed)`);
   }
@@ -399,6 +412,9 @@ async function main() {
     const pitQual = days <= 7 ? 3  : days <= 14 ? 8  : 15;
 
     console.log(`\n[date-range] Last ${days}d (${range.startdate}..${range.enddate})`);
+    // Cool off the proxy between rolling-window queries — Cloudflare 403s
+    // build up otherwise and starve the later date ranges.
+    await sleep(3000);
     try {
       results.fgBatRanges[days] = await fetchFG('bat', batQual, 8, range);
     } catch (e) {
@@ -406,6 +422,7 @@ async function main() {
       results.fgBatRanges[days] = [];
       console.error(`    ERROR bat: ${e.message}`);
     }
+    await sleep(3000);
     try {
       results.fgPitRanges[days] = await fetchFG('pit', pitQual, 8, range);
     } catch (e) {
