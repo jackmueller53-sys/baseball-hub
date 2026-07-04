@@ -34,6 +34,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the push-retry step can rebase onto origin/main
+          # if a concurrent workflow (MLB fetch) moved the branch.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -81,7 +85,21 @@ jobs:
           (data/milb/<level>/bbe/<player_id>.json).
 
           Triggered by: ${{ github.event_name }}"
-          git push
+
+          # The MLB fetch-data.yml job can push to main while this job runs,
+          # rejecting a plain push with "fetch first". Rebase our data commit
+          # on top of whatever landed and retry a few times.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Pushed on attempt $attempt"
+              exit 0
+            fi
+            echo "Push $attempt rejected — rebasing on latest origin/main…"
+            git pull --rebase --autostash origin main || exit 1
+            sleep $((attempt * 3))
+          done
+          echo "::error::Failed to push after 5 rebase attempts"
+          exit 1
 
       # Why this step exists:
       # Commits pushed with the default GITHUB_TOKEN do NOT trigger other
