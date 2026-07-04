@@ -3116,7 +3116,7 @@ async function loadStaticDateRange2026(days) {
 
   const fetchFile = async (filename) => {
     try {
-      const r = await fetch('data/' + filename);
+      const r = await fetch('data/' + filename, { cache: 'no-cache' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return await r.json();
     } catch (_) { return null; }
@@ -3168,15 +3168,20 @@ async function loadStaticData2026(){
     // Determine base path: for GitHub Pages it's '', for file:// it may need '../' or similar
     // Try both with and without relative path prefix
     const fetchStaticFile = async (filename) => {
+      // `cache: 'no-cache'` forces the browser to revalidate with the server
+      // (conditional GET → cheap 304 when unchanged) instead of serving a
+      // possibly-stale copy from disk cache. Without this, after a FG-403
+      // recovery the browser could keep serving the old meta.json (whose
+      // errors[] still lists FG failures) and leave the stale banner stuck up.
       try {
         // First try direct path (GitHub Pages)
-        const resp = await fetch(`data/${filename}`);
+        const resp = await fetch(`data/${filename}`, { cache: 'no-cache' });
         if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
       } catch(e1){
         try {
           // Fallback for file:// or alternative base paths
-          const resp = await fetch(`../data/${filename}`);
+          const resp = await fetch(`../data/${filename}`, { cache: 'no-cache' });
           if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
           return await resp.json();
         } catch(e2){
