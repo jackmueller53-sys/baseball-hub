@@ -42,22 +42,19 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 // same CORS proxy chain the browser app uses.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Real-Chrome-on-macOS header set. The previous "BaseballHub/1.0" UA suffix
-// got the runner IP flagged by Cloudflare → 403. These headers are byte-for-
-// byte what a logged-out Chrome 124 sends on a fresh visit.
+// Honest non-browser header set. FanGraphs sits behind Cloudflare, whose bot
+// challenge fires when a request *claims* to be Chrome (Sec-Ch-Ua + a Chrome
+// User-Agent) but the TLS/JA3 fingerprint is plainly Node/curl — the mismatch
+// is exactly what it looks for. Empirically (2026-07):
+//   plain/branded UA  → HTTP 200 (full leaderboard payload)
+//   Chrome UA + hints → HTTP 403 ("Just a moment…" challenge)
+// So we deliberately do NOT impersonate a browser: an honest API client is
+// waved through where the fake Chrome gets blocked. Keep Accept + identity
+// encoding (Node won't gunzip for us) and nothing else.
 const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'User-Agent': 'baseball-hub-fetch/1.0 (+https://github.com/jackmueller53-sys/baseball-hub)',
   'Accept': 'application/json, text/csv, text/plain, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'identity',  // Node won't gunzip for us; ask for plain
-  'Cache-Control': 'no-cache',
-  'Pragma': 'no-cache',
-  'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-  'Sec-Ch-Ua-Mobile': '?0',
-  'Sec-Ch-Ua-Platform': '"macOS"',
-  'Sec-Fetch-Dest': 'empty',
-  'Sec-Fetch-Mode': 'cors',
-  'Sec-Fetch-Site': 'same-site',
+  'Accept-Encoding': 'identity',
 };
 
 // CORS proxies (same as js/explorer.js). Used as fallback only.
