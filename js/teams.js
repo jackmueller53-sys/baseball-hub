@@ -104,17 +104,39 @@
 
   // ── Aggregate to 30 teams ──
   function aggregate() {
+    // FanGraphs returns ONE combined row for a player who changed teams
+    // mid-season: Team === "2 Tms"/"3 Tms" (teamid 0). That row still carries
+    // `playerTeamId` — the id of the club the player is on NOW. Build a clean
+    // teamid→abbr map from the single-team rows, then attribute each traded
+    // player to their current team so they appear on the correct card.
+    const idMap = new Map();
+    for (const r of [..._bat, ..._pit]) {
+      const a = r.Team, tid = r.teamid;
+      if (a && a.length <= 4 && Number.isInteger(tid) && tid > 0 && !idMap.has(tid)) {
+        idMap.set(tid, a);
+      }
+    }
+    // → { team, traded } or null when the player has no current club
+    // (playerTeamId ≤ 0 = free agent) and should be dropped.
+    function resolveTeam(r) {
+      const a = r.Team;
+      if (a && a.length <= 4) return { team: a, traded: false };
+      const cur = idMap.get(r.playerTeamId);
+      return cur ? { team: cur, traded: true } : null;
+    }
+
     const byTeam = new Map();
-    for (const r of _bat) {
-      const t = r.Team; if (!t || t.length > 4) continue;
-      if (!byTeam.has(t)) byTeam.set(t, { team: t, bat: [], pit: [] });
-      byTeam.get(t).bat.push(r);
+    function add(r, side) {
+      const res = resolveTeam(r);
+      if (!res) return;
+      if (!byTeam.has(res.team)) byTeam.set(res.team, { team: res.team, bat: [], pit: [] });
+      // Tag traded-in players so buildTeamRow keeps them on the roster but
+      // leaves them out of the team's aggregate stat means (their line spans
+      // two clubs, so counting it here would overstate the new team).
+      byTeam.get(res.team)[side].push(res.traded ? { ...r, _traded: true } : r);
     }
-    for (const r of _pit) {
-      const t = r.Team; if (!t || t.length > 4) continue;
-      if (!byTeam.has(t)) byTeam.set(t, { team: t, bat: [], pit: [] });
-      byTeam.get(t).pit.push(r);
-    }
+    for (const r of _bat) add(r, 'bat');
+    for (const r of _pit) add(r, 'pit');
     _teams = [...byTeam.values()].map(buildTeamRow).filter(Boolean);
   }
 
@@ -135,31 +157,36 @@
   function buildTeamRow(t) {
     const bat = t.bat, pit = t.pit;
     if (!bat.length && !pit.length) return null;
+    // Roster lists (lineup/rotation/relievers) use the full arrays so traded-in
+    // players show up; aggregate stat means use only whole-season-here players
+    // so a traded player's two-club line doesn't distort the team totals.
+    const batAgg = bat.filter(r => !r._traded);
+    const pitAgg = pit.filter(r => !r._traded);
 
     // ── Offense ──
-    const totalPA = sumOf(bat, 'PA');
-    const totalAB = sumOf(bat, 'AB');
-    const wrcPlus = weightedMean(bat, 'wRC+', 'PA');
-    const wOBA    = weightedMean(bat, 'wOBA', 'PA');
-    const avg     = weightedMean(bat, 'AVG', 'AB');
-    const obp     = weightedMean(bat, 'OBP', 'PA');
-    const slg     = weightedMean(bat, 'SLG', 'AB');
+    const totalPA = sumOf(batAgg, 'PA');
+    const totalAB = sumOf(batAgg, 'AB');
+    const wrcPlus = weightedMean(batAgg, 'wRC+', 'PA');
+    const wOBA    = weightedMean(batAgg, 'wOBA', 'PA');
+    const avg     = weightedMean(batAgg, 'AVG', 'AB');
+    const obp     = weightedMean(batAgg, 'OBP', 'PA');
+    const slg     = weightedMean(batAgg, 'SLG', 'AB');
     const iso     = (slg != null && avg != null) ? slg - avg : null;
-    const hr      = sumOf(bat, 'HR');
-    const sb      = sumOf(bat, 'SB');
-    const batWAR  = sumOf(bat, 'WAR');
-    const kPct    = weightedMean(bat, 'K%', 'PA');
-    const bbPct   = weightedMean(bat, 'BB%', 'PA');
+    const hr      = sumOf(batAgg, 'HR');
+    const sb      = sumOf(batAgg, 'SB');
+    const batWAR  = sumOf(batAgg, 'WAR');
+    const kPct    = weightedMean(batAgg, 'K%', 'PA');
+    const bbPct   = weightedMean(batAgg, 'BB%', 'PA');
 
     // ── Pitching ──
-    const totalIP = sumOf(pit, 'IP');
-    const era     = weightedMean(pit, 'ERA', 'IP');
-    const fip     = weightedMean(pit, 'FIP', 'IP');
-    const xFIP    = weightedMean(pit, 'xFIP', 'IP');
-    const whip    = weightedMean(pit, 'WHIP', 'IP');
-    const kPctP   = weightedMean(pit, 'K%', 'IP');
-    const bbPctP  = weightedMean(pit, 'BB%', 'IP');
-    const pitWAR  = sumOf(pit, 'WAR');
+    const totalIP = sumOf(pitAgg, 'IP');
+    const era     = weightedMean(pitAgg, 'ERA', 'IP');
+    const fip     = weightedMean(pitAgg, 'FIP', 'IP');
+    const xFIP    = weightedMean(pitAgg, 'xFIP', 'IP');
+    const whip    = weightedMean(pitAgg, 'WHIP', 'IP');
+    const kPctP   = weightedMean(pitAgg, 'K%', 'IP');
+    const bbPctP  = weightedMean(pitAgg, 'BB%', 'IP');
+    const pitWAR  = sumOf(pitAgg, 'WAR');
 
     // Rough ERA- proxy (relative to league avg ~4.20 for 2026, recalculated below globally)
     const eraMinus = era != null ? Math.round((era / 4.20) * 100) : null;
@@ -396,7 +423,7 @@
             </tr></thead>
             <tbody>${lo.map((b, i) => `<tr>
               <td>${i + 1}</td>
-              <td>${esc(b.PlayerName)}<small>${esc(b.Bats || '?')}HB</small></td>
+              <td>${esc(b.PlayerName)}${tradedTag(b)}<small>${esc(b.Bats || '?')}HB</small></td>
               <td class="num">${b.PA || 0}</td>
               <td class="num">${(num(b.AVG)||0).toFixed(3)}</td>
               <td class="num">${(num(b.OBP)||0).toFixed(3)}</td>
@@ -418,7 +445,7 @@
             </tr></thead>
             <tbody>${rot.map((p, i) => `<tr>
               <td>${i + 1}</td>
-              <td>${esc(p.PlayerName)}<small>${esc(p.Throws || '?')}HP</small></td>
+              <td>${esc(p.PlayerName)}${tradedTag(p)}<small>${esc(p.Throws || '?')}HP</small></td>
               <td class="num">${p.GS || 0}</td>
               <td class="num">${(num(p.IP) || 0).toFixed(1)}</td>
               <td class="num">${(num(p.ERA) || 0).toFixed(2)}</td>
@@ -442,7 +469,7 @@
               </tr></thead>
               <tbody>${rel.map(p => `<tr>
                 <td class="tag-cell">${esc(p._label)}</td>
-                <td>${esc(p.PlayerName)}<small>${esc(p.Throws || '?')}HP</small></td>
+                <td>${esc(p.PlayerName)}${tradedTag(p)}<small>${esc(p.Throws || '?')}HP</small></td>
                 <td class="num">${p.G || 0}</td>
                 <td class="num">${(num(p.IP) || 0).toFixed(1)}</td>
                 <td class="num">${p.SV || 0}</td>
@@ -462,6 +489,13 @@
   function pctTxt(v) {
     const n = num(v); if (n == null) return '—';
     return (n > 1 ? n : n * 100).toFixed(1) + '%';
+  }
+  // Marks a player attributed here from a mid-season trade — their line is
+  // combined across teams, so it's shown on the roster but not in the totals.
+  function tradedTag(x) {
+    return x && x._traded
+      ? ' <span class="tc-traded" title="Season stats combined across multiple teams">2 Tms</span>'
+      : '';
   }
   window.closeTeamCard = function () {
     const ov = $('tc-overlay');

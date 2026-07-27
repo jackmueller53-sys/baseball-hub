@@ -694,6 +694,14 @@ tr:hover td{background:rgba(0,0,0,.02)}
   margin-left:6px; font-size:10px;
 }
 .tc-roster tr:last-child td { border-bottom:0; }
+.tc-traded {
+  display:inline-block; margin-left:6px; padding:1px 5px;
+  font-family:'Barlow Condensed', system-ui, sans-serif;
+  font-size:9px; letter-spacing:.5px; text-transform:uppercase;
+  vertical-align:middle; border-radius:3px;
+  color:#9a6a13; background:rgba(214,158,46,.16); font-weight:600;
+  cursor:help;
+}
 
 /* Team scatter dot hover */
 .team-dot circle { transition:r .12s, fill-opacity .12s; }
