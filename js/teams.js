@@ -189,9 +189,27 @@
       .slice(0, 5);
   }
   function keyRelievers(team) {
+    // Names already shown in the Rotation section — never also list a pitcher
+    // as a "key reliever" (a swingman with, say, 8 GS / 20 G slips past the
+    // GS/G < 0.5 test and, being high-IP, wins the IP-leader pick, so the same
+    // arm appeared in BOTH sections — e.g. Manaea, Reynaldo López).
+    const starterNames = new Set(rotation(team).map(p => p.PlayerName));
+    // Position players who threw mop-up innings pollute fg-pit-all.json: a
+    // catcher/INF with a real batting line (>=50 PA) and only a few IP is not
+    // a reliever. Their tiny-sample K% can even win the "highest K%" closer
+    // fallback below, so exclude them from the staff view entirely.
+    const posPlayerPA = new Set(
+      team._bat.filter(b => (num(b.PA) || 0) >= 50).map(b => b.PlayerName)
+    );
+    const isPositionPlayer = (p) =>
+      posPlayerPA.has(p.PlayerName) && (num(p.IP) || 0) < 15;
+
     const relievers = team._pit.filter(p => {
       const g = p.G || 0, gs = p.GS || 0;
-      return g > 0 && (gs / g) < 0.5;
+      if (g === 0) return false;
+      if (starterNames.has(p.PlayerName)) return false;
+      if (isPositionPlayer(p)) return false;
+      return (gs / g) < 0.5;
     });
     if (relievers.length === 0) return [];
     const out = [];
