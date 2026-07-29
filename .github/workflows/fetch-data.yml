@@ -40,6 +40,9 @@ jobs:
       - name: Compute custom Stuff+ model scores
         run: python3 scripts/compute_stuffplus.py --verbose
 
+      - name: Fetch active rosters (MLB Stats API)
+        run: node scripts/fetch-rosters.js
+
       - name: Check for data changes
         id: check
         run: |

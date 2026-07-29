@@ -16,6 +16,8 @@
   // ── State ──
   let _bat = [], _pit = [];
   let _teams = [];                  // aggregated team rows
+  let _rosters = null;              // data/rosters.json (authoritative team membership)
+  let _reconStats = null;           // { moved, updatedAt } summary for the verify badge
   let _xKey = 'wrcPlus', _yKey = 'eraMinus';
   let _loaded = false, _loading = null;
 
@@ -79,10 +81,21 @@
           } catch (_) {}
           return fetch('data/fg-pit.json').then(r => r.json());
         }
-        const [bat, pit] = await Promise.all([
+        // rosters.json is optional — if the fetch/parse fails the dashboard
+        // still works, it just falls back to FanGraphs team attribution.
+        async function loadRosters() {
+          try {
+            const r = await fetch('data/rosters.json', { cache: 'no-cache' });
+            if (r.ok) return r.json();
+          } catch (_) {}
+          return null;
+        }
+        const [bat, pit, rosters] = await Promise.all([
           fetch('data/fg-bat.json').then(r => r.json()),
           loadPit(),
+          loadRosters(),
         ]);
+        _rosters = (rosters && rosters.byPlayer) ? rosters : null;
         _bat = (Array.isArray(bat) ? bat : []).map((r) => ({
           ...r,
           PlayerName: stripHTML(r.PlayerName || r.Name),
@@ -125,19 +138,48 @@
       return cur ? { team: cur, traded: true } : null;
     }
 
+    // ROSTER VERIFICATION — data/rosters.json (MLB Stats API 40-man) is the
+    // authoritative source for which club a player is on RIGHT NOW. Around the
+    // trade deadline the stat feed lags; the roster does not. So the roster's
+    // team wins when it disagrees with FanGraphs. Join by MLBAM id.
+    const byPlayer = _rosters ? _rosters.byPlayer : null;
+    let reassigned = 0;
+
+    // → { team, off, origin } | null. `off` = stats don't cleanly belong to
+    // this club (traded/reassigned) → keep on roster list, drop from aggregate
+    // means. `origin` labels the chip ("2 Tms" or the ex-club abbr).
+    function resolve(r) {
+      const fg = resolveTeam(r);
+      const mid = r.xMLBAMID;
+      const rosterTeam = (byPlayer && mid != null) ? byPlayer[String(mid)] : undefined;
+      if (rosterTeam) {
+        const fgTeam = fg ? fg.team : null;
+        const movedByRoster = !!fg && !fg.traded && fgTeam !== rosterTeam;
+        if (movedByRoster) reassigned++;
+        const off = fg ? (fg.traded || fgTeam !== rosterTeam) : true;
+        const origin = fg ? (fg.traded ? '2 Tms' : (movedByRoster ? fgTeam : null)) : null;
+        return { team: rosterTeam, off, origin };
+      }
+      // Not on any current 40-man (FA / DFA / minors): keep FG attribution.
+      if (!fg) return null;
+      return { team: fg.team, off: fg.traded, origin: fg.traded ? '2 Tms' : null };
+    }
+
     const byTeam = new Map();
     function add(r, side) {
-      const res = resolveTeam(r);
+      const res = resolve(r);
       if (!res) return;
       if (!byTeam.has(res.team)) byTeam.set(res.team, { team: res.team, bat: [], pit: [] });
-      // Tag traded-in players so buildTeamRow keeps them on the roster but
-      // leaves them out of the team's aggregate stat means (their line spans
-      // two clubs, so counting it here would overstate the new team).
-      byTeam.get(res.team)[side].push(res.traded ? { ...r, _traded: true } : r);
+      byTeam.get(res.team)[side].push(
+        res.off ? { ...r, _traded: true, _origin: res.origin } : r
+      );
     }
     for (const r of _bat) add(r, 'bat');
     for (const r of _pit) add(r, 'pit');
     _teams = [...byTeam.values()].map(buildTeamRow).filter(Boolean);
+    _reconStats = _rosters
+      ? { reassigned, updatedAt: _rosters.updatedAt, players: _rosters.playerCount || 0 }
+      : null;
   }
 
   function weightedMean(rows, valueKey, weightKey) {
@@ -493,9 +535,12 @@
   // Marks a player attributed here from a mid-season trade — their line is
   // combined across teams, so it's shown on the roster but not in the totals.
   function tradedTag(x) {
-    return x && x._traded
-      ? ' <span class="tc-traded" title="Season stats combined across multiple teams">2 Tms</span>'
-      : '';
+    if (!x || !x._traded) return '';
+    const label = (x._origin && x._origin !== '2 Tms') ? 'ex-' + x._origin : '2 Tms';
+    const title = (x._origin && x._origin !== '2 Tms')
+      ? 'Roster-verified move — season stats are from ' + x._origin
+      : 'Season stats combined across multiple teams';
+    return ' <span class="tc-traded" title="' + esc(title) + '">' + esc(label) + '</span>';
   }
   window.closeTeamCard = function () {
     const ov = $('tc-overlay');
@@ -539,15 +584,48 @@
     load().then(() => {
       renderScatter();
       renderGrid();
+      renderVerifyBadge();
       const cnt = $('p-cnt'); if (cnt) cnt.textContent = String(_teams.length);
       const lbl = document.querySelector('.count-lbl'); if (lbl) lbl.textContent = 'Teams Shown';
     });
+  }
+
+  // Roster-verification badge in the Teams header. Shows the source + how
+  // fresh the roster snapshot is, and how many trade moves the reconciliation
+  // applied on top of FanGraphs — so it's obvious the cards stay current
+  // through the deadline (and obvious when the snapshot goes stale).
+  function renderVerifyBadge() {
+    const el = $('roster-verify'); if (!el) return;
+    if (!_reconStats) {
+      el.hidden = false;
+      el.className = 'roster-verify rv-warn';
+      el.innerHTML = '<span class="rv-dot"></span>Roster check unavailable — showing FanGraphs team data';
+      return;
+    }
+    const upd = new Date(_reconStats.updatedAt);
+    const ageH = (Date.now() - upd.getTime()) / 36e5;
+    const ageTxt = ageH < 1 ? 'just now'
+      : ageH < 36 ? Math.round(ageH) + 'h ago'
+      : Math.round(ageH / 24) + 'd ago';
+    const dateTxt = isNaN(upd) ? 'unknown' : upd.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const stale = ageH > 72;   // >3 days without a refresh
+    const moves = _reconStats.reassigned;
+    const movesTxt = moves > 0
+      ? ` · ${moves} trade move${moves === 1 ? '' : 's'} applied`
+      : ' · all rosters current';
+    el.hidden = false;
+    el.className = 'roster-verify' + (stale ? ' rv-warn' : ' rv-ok');
+    el.innerHTML = `<span class="rv-dot"></span>`
+      + (stale
+          ? `Roster data ${ageTxt} — may lag recent trades`
+          : `Rosters verified vs MLB.com · ${dateTxt} (${ageTxt})${movesTxt}`);
   }
 
   function deactivateTeamsMode() {
     document.querySelector('#app-explorer .chart-card').style.display = '';
     document.querySelector('#app-explorer .tbl-card').style.display = '';
     $('teams-view').hidden = true;
+    const rv = $('roster-verify'); if (rv) rv.hidden = true;
     // Restore filter visibility
     document.querySelectorAll('#app-explorer .sidebar .card').forEach(c => { c.style.display = ''; });
     const role = $('role-row'); if (role) role.style.display = 'none'; // explorer manages this
