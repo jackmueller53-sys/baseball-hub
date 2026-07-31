@@ -728,7 +728,9 @@ function hitterVsTable(p, lg, hitters, levelLabel, qualified) {
     { lbl: 'SLG',   key: 'slg',    dir:  1, fmt: fmt3 },
     { lbl: 'OPS',   key: 'ops',    dir:  1, fmt: fmt3 },
     { lbl: 'wOBA',  key: 'woba',   dir:  1, fmt: fmt3 },
-    { lbl: 'xwOBA', key: 'xwoba',  dir:  1, fmt: fmt3 },
+    // xwOBA omitted: the MLB Stats API expectedStatistics endpoint returns
+    // unreliable (systematically misscaled) values at every MiLB level, so we
+    // don't publish it. wOBA above is computed from raw components and is sound.
     { lbl: 'ISO',   key: 'iso',    dir:  1, fmt: fmt3 },
     { lbl: 'K%',    key: 'k_pct',  dir: -1, fmt: pct1 },
     { lbl: 'BB%',   key: 'bb_pct', dir:  1, fmt: pct1 }
@@ -799,6 +801,29 @@ function renderHitter(p, lg, levelLabel, hitters) {
     ? 'Percentiles vs. ' + escapeHtml(levelLeague) + ' (PA ≥ ' + QUAL_PA + ')'
     : 'Percentiles vs. ' + escapeHtml(levelLeague) + ' — small sample (PA &lt; ' + QUAL_PA + ')';
 
+  // Levels without Hawk-Eye (AA, A+) have no per-event hit_data, so there are
+  // no BBE shards — omit the Spray Chart + Quality-of-Contact panels entirely
+  // rather than render an empty "no tracking" box on every card. Plate
+  // Discipline (Whiff%/Contact% from play-by-play) + percentiles still apply.
+  var hasBBE = (window.MILB_HAS_BBE !== false);
+  var sprayRow = hasBBE
+    ? ('<div class="pc-row">'
+      +   '<div class="chart-panel" data-bbe-target="spray-' + (p.player_id || '0') + '">'
+      +     '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>'
+      +     '<div class="bbp-loading">Loading Statcast events…</div>'
+      +   '</div>'
+      + '</div>')
+    : '';
+  var qocPanel = hasBBE
+    ? ('<div class="chart-panel bbp-panel" data-bbe-target="bbp-' + (p.player_id || '0') + '">'
+      +   '<div class="cp-title">Quality of Contact<span class="cp-src cp-src-mlb">Statcast</span></div>'
+      +   battedBallProfileLoading()
+      + '</div>')
+    : '';
+  var footnote = hasBBE
+    ? 'Spray chart, trajectory + angle distribution, and Quality of Contact from Statcast per-event hit_data. Percentile vs ' + escapeHtml(levelLabel) + ' hitters with qualified PA. Z-Contact% / O-Contact% derived from per-pitch plate location (proxy zone: |pX| ≤ 0.83 ft, 1.5 ≤ pZ ≤ 3.5 ft).'
+    : escapeHtml(levelLabel) + ' parks are not Hawk-Eye tracked — no exit velocity, launch angle, or spray/batted-ball data at this level. Rate stats, Plate Discipline (Whiff% / Contact% from official play-by-play), and percentiles are full-season MLB Stats API.';
+
   return ''
     + '<div class="pc-card">'
     +   '<button class="pc-close" onclick="MiLBCards.close()">&times;</button>'
@@ -821,19 +846,12 @@ function renderHitter(p, lg, levelLabel, hitters) {
     +     '</div>'
     +   '</div>'
     +   '<div class="pc-body">'
-    // Row 1: Spray Chart with distribution beneath (full width, lazy from BBE)
-    +     '<div class="pc-row">'
-    +       '<div class="chart-panel" data-bbe-target="spray-' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Spray Chart<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         '<div class="bbp-loading">Loading Statcast events…</div>'
-    +       '</div>'
-    +     '</div>'
-    // Row 2: Quality of Contact (lazy from BBE shard) + Plate Discipline
-    +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel bbp-panel" data-bbe-target="bbp-' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Quality of Contact<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         battedBallProfileLoading()
-    +       '</div>'
+    // Row 1: Spray Chart (omitted on non-Hawk-Eye levels)
+    +     sprayRow
+    // Row 2: Quality of Contact (BBE-gated) + Plate Discipline. Drops to a
+    // single column when there's no Quality-of-Contact panel to pair with.
+    +     '<div class="pc-row ' + (hasBBE ? 'pc-row-2col' : '') + '">'
+    +       qocPanel
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">Plate Discipline<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         pdHtml
@@ -844,14 +862,14 @@ function renderHitter(p, lg, levelLabel, hitters) {
     +         '</div>'
     +       '</div>'
     +     '</div>'
-    // Row 2: Percentiles vs league (moved up from old bottom slot)
+    // Row 3: Percentiles vs league
     +     '<div class="pc-row">'
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">' + pctLbl + '<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         hitterVsTable(p, lg || {}, hitters, levelLabel, qualified)
     +       '</div>'
     +     '</div>'
-    +     '<div class="pc-footnote">Spray chart, trajectory + angle distribution, and Quality of Contact from Statcast per-event hit_data. Percentile vs ' + escapeHtml(levelLabel) + ' hitters with qualified PA. Z-Contact% / O-Contact% derived from per-pitch plate location (proxy zone: |pX| ≤ 0.83 ft, 1.5 ≤ pZ ≤ 3.5 ft).</div>'
+    +     '<div class="pc-footnote">' + footnote + '</div>'
     +   '</div>'
     + '</div>';
 }
@@ -878,8 +896,9 @@ function pitcherVsTable(p, lg, pitchers, levelLabel, qualified) {
     { lbl: 'K%',      key: 'k_pct',   dir:  1, fmt: pct1 },
     { lbl: 'BB%',     key: 'bb_pct',  dir: -1, fmt: pct1 },
     { lbl: 'K-BB%',   key: 'kbb_pct', dir:  1, fmt: pct1 },
-    { lbl: 'HR/9',    key: 'hr9',     dir: -1, fmt: fmt2 },
-    { lbl: 'xwOBA-A', key: 'xwoba_a', dir: -1, fmt: fmt3 }
+    { lbl: 'HR/9',    key: 'hr9',     dir: -1, fmt: fmt2 }
+    // xwOBA-A omitted: MiLB expectedStatistics endpoint is unreliable at every
+    // level (see hitter table note) — not published.
   ];
   var body = defs.map(function (d) {
     var pv = p[d.key];
@@ -953,6 +972,36 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     ? 'Percentiles vs. ' + escapeHtml(levelLeague) + ' (IP ≥ ' + QUAL_IP + ')'
     : 'Percentiles vs. ' + escapeHtml(levelLeague) + ' — small sample (IP &lt; ' + QUAL_IP + ')';
 
+  // Non-Hawk-Eye levels (AA, A+): no pitch-tracking arsenal/movement and no
+  // BBE spray — omit those panels. Command & Whiff Profile (K/BB/Whiff/Strike%
+  // from play-by-play) + percentiles still apply.
+  var hasBBE = (window.MILB_HAS_BBE !== false);
+  var arsenalPanel = hasBBE
+    ? ('<div class="chart-panel" data-arsenal-target="' + (p.player_id || '0') + '">'
+      +   '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>'
+      +   arsenalHtml
+      + '</div>')
+    : '';
+  var movementRow = hasBBE
+    ? ('<div class="pc-row">'
+      +   '<div class="chart-panel" data-movement-target="' + (p.player_id || '0') + '">'
+      +     '<div class="cp-title">Pitch Movement<span class="cp-src cp-src-mlb">Statcast</span></div>'
+      +     '<div class="mlb-movement-wrap"><div class="ar-loading">Loading pitch movement…</div></div>'
+      +   '</div>'
+      + '</div>')
+    : '';
+  var sprayRow = hasBBE
+    ? ('<div class="pc-row">'
+      +   '<div class="chart-panel" data-bbe-pit-target="spray-' + (p.player_id || '0') + '">'
+      +     '<div class="cp-title">Spray Chart <em style="font-style:normal;color:var(--fg2);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">— batted balls allowed</em><span class="cp-src cp-src-mlb">Statcast</span></div>'
+      +     '<div class="bbp-loading">Loading Statcast events…</div>'
+      +   '</div>'
+      + '</div>')
+    : '';
+  var pFootnote = hasBBE
+    ? 'Stats API season + seasonAdvanced + Statcast pitchArsenal + per-event hit_data. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.'
+    : escapeHtml(levelLabel) + ' parks are not Hawk-Eye tracked — no pitch velocity/movement or batted-ball data at this level. Command & Whiff Profile (K% / BB% / Whiff% / Strike% from official play-by-play) and percentiles are full-season MLB Stats API.';
+
   return ''
     + '<div class="pc-card">'
     +   '<button class="pc-close" onclick="MiLBCards.close()">&times;</button>'
@@ -975,12 +1024,10 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     +     '</div>'
     +   '</div>'
     +   '<div class="pc-body">'
-    // Row 1: Arsenal + Command & Whiff Profile (renamed Plate Discipline)
-    +     '<div class="pc-row pc-row-2col">'
-    +       '<div class="chart-panel" data-arsenal-target="' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Pitch Arsenal<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         arsenalHtml
-    +       '</div>'
+    // Row 1: Arsenal (BBE-gated) + Command & Whiff Profile. Drops to a single
+    // column when there's no arsenal panel to pair with.
+    +     '<div class="pc-row ' + (hasBBE ? 'pc-row-2col' : '') + '">'
+    +       arsenalPanel
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">Command &amp; Whiff Profile<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         profileHtml
@@ -991,31 +1038,19 @@ function renderPitcher(p, lg, levelLabel, pitchers) {
     +         '</div>'
     +       '</div>'
     +     '</div>'
-    // Row 2: Pitch Movement (full width)
-    +     '<div class="pc-row">'
-    +       '<div class="chart-panel" data-movement-target="' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Pitch Movement<span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         '<div class="mlb-movement-wrap"><div class="ar-loading">Loading pitch movement…</div></div>'
-    +       '</div>'
-    +     '</div>'
-    // Row 3: Percentiles vs league (moved up from old bottom slot)
+    // Row 2: Pitch Movement (Statcast — omitted on non-Hawk-Eye levels)
+    +     movementRow
+    // Row 3: Percentiles vs league
     +     '<div class="pc-row">'
     +       '<div class="stat-section ' + (qualified ? '' : 'pc-sss') + '">'
     +         '<div class="cp-title">' + vsLbl + '<span class="cp-src cp-src-mlb">Stats API</span></div>'
     +         pitcherVsTable(p, lg, pitchers, levelLabel, qualified)
     +       '</div>'
     +     '</div>'
-    // Row 4: Spray Chart of events allowed + GB/FB/LD/PU + Pull/Cent/Oppo
-    // distribution rows beneath. Replaces the prior percentile-bars panel —
-    // both visualised the same trajectory data; this version is consistent
-    // with the hitter card's spray panel.
-    +     '<div class="pc-row">'
-    +       '<div class="chart-panel" data-bbe-pit-target="spray-' + (p.player_id || '0') + '">'
-    +         '<div class="cp-title">Spray Chart <em style="font-style:normal;color:var(--fg2);font-weight:400;text-transform:none;letter-spacing:0;margin-left:6px">— batted balls allowed</em><span class="cp-src cp-src-mlb">Statcast</span></div>'
-    +         '<div class="bbp-loading">Loading Statcast events…</div>'
-    +       '</div>'
-    +     '</div>'
-    +     '<div class="pc-footnote">Stats API season + seasonAdvanced + Statcast pitchArsenal + per-event hit_data. League avgs computed from qualified pitchers in the loaded ' + escapeHtml(levelLabel) + ' dataset.</div>'
+    // Row 4: Spray Chart of batted balls allowed (Statcast — omitted on
+    // non-Hawk-Eye levels)
+    +     sprayRow
+    +     '<div class="pc-footnote">' + pFootnote + '</div>'
     +   '</div>'
     + '</div>';
 }
@@ -1281,6 +1316,9 @@ function open(player, mode, db, levelLabel) {
   // Hitter cards: lazy-load BBE shard + re-render the Spray Chart + BBP panels.
   // Pitcher cards: lazy-load arsenal shard (Stats API pitchArsenal endpoint
   // is deprecated; we extract per-pitch from live feeds in the BBE fetcher).
+  // Non-Hawk-Eye levels have no BBE/arsenal shards — the render already omits
+  // those panels, so skip the lazy fetches (avoids 404 spam + dead promises).
+  if (window.MILB_HAS_BBE === false) return;
   if (mode === 'pitchers') hydrateArsenal(player, levelLabel);
   else hydrateBBE(player, levelLabel, lg);
 }

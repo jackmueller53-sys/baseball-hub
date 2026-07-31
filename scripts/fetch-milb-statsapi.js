@@ -80,6 +80,10 @@ const TIMEOUT = 30000;
 const LEVELS = [
   { key: 'aaa', sportId: 11, leagueId: null, label: 'AAA',
     leagueNames: 'International League + Pacific Coast League' },
+  { key: 'aa', sportId: 12, leagueId: null, label: 'AA',
+    leagueNames: 'Eastern + Southern + Texas Leagues' },
+  { key: 'aplus', sportId: 13, leagueId: null, label: 'A+',
+    leagueNames: 'South Atlantic + Midwest + Northwest Leagues' },
   { key: 'fsl', sportId: 14, leagueId: 123, label: 'FSL',
     leagueNames: 'Florida State League' }
 ];

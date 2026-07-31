@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Baseball Hub &mdash; A+ Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;800;900&family=Playfair+Display:ital,wght@0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/styles.css">
+<link rel="stylesheet" href="../css/milb.css">
+<style>
+  /* Source tag classes for the Stats API rebuild — see milb-aaa.html for notes */
+  .tag-sa   { background: rgba(29,78,216,.08);  color:#1D4ED8; border-color: rgba(29,78,216,.20); }
+  .tag-adv  { background: rgba(91,33,182,.08);  color:#5B21B6; border-color: rgba(91,33,182,.20); }
+  .tag-calc { background: rgba(4,120,87,.08);   color:#047857; border-color: rgba(4,120,87,.20); }
+  .slbl-sa   { background: rgba(29,78,216,.10);  color:#1D4ED8; }
+  .slbl-adv  { background: rgba(91,33,182,.10);  color:#5B21B6; }
+  .slbl-calc { background: rgba(4,120,87,.10);   color:#047857; }
+  .src-pill.pill-sa   .pill-dot { background:#1D4ED8; }
+  .src-pill.pill-adv  .pill-dot { background:#5B21B6; }
+  .src-pill.pill-calc .pill-dot { background:#047857; }
+</style>
+</head>
+<body>
+
+<!-- ═══ TOOLTIP (shared, floats over everything) ═══════════════════════════ -->
+<div id="dot-tip">
+  <div class="dt-head">
+    <div class="dt-name" id="dt-name"></div>
+    <div class="dt-meta"><span class="dt-team" id="dt-team"></span><span id="dt-pos"></span></div>
+  </div>
+  <div class="dt-stats" id="dt-stats"></div>
+  <div class="dt-ax" id="dt-ax"></div>
+</div>
+
+<div class="page">
+
+<!-- ═══ HUB HEADER ═════════════════════════════════════════════════════════ -->
+<div id="hub-header">
+  <div class="hub-hdr">
+    <a class="hub-logo" href="../index.html">
+      <div class="hub-logo-mark">&#9918;</div>
+      <div>
+        <span class="hub-logo-title">Baseball Hub</span>
+        <span class="hub-logo-sub">by Jack Mueller</span>
+      </div>
+    </a>
+    <div class="hub-divider"></div>
+    <nav class="hub-nav">
+      <a class="hub-tab" href="../index.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128202;</span> Stats Explorer
+      </a>
+      <a class="hub-tab" href="../index.html#stuffplus" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#128300;</span> Stuff+ Leaderboard
+      </a>
+      <a class="hub-tab active" href="milb.html" style="text-decoration:none;display:inline-flex;align-items:center">
+        <span class="hub-tab-icon">&#9918;</span> MiLB
+      </a>
+    </nav>
+
+    <!-- Sub-controls -->
+    <div id="sub-explorer-controls" style="display:flex;align-items:center;gap:12px;flex:1;overflow:hidden">
+      <div class="hub-divider"></div>
+      <div class="player-tabs" style="flex-shrink:0">
+        <button class="ptab active" id="ptab-hit">&#127947; Hitters</button>
+        <button class="ptab" id="ptab-pit">&#9918; Pitchers</button>
+      </div>
+      <div class="src-pills" style="flex-shrink:0">
+        <span class="src-pill pill-sa"><span class="pill-dot"></span>Stats API</span>
+        <span class="src-pill pill-adv"><span class="pill-dot"></span>Advanced</span>
+        <span class="src-pill pill-calc"><span class="pill-dot"></span>Computed</span>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span class="s-badge badge-final" id="s-badge">A+ &middot; 2026 LIVE</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SOURCE INFO BAR ═══════════════════════════════════════════════════ -->
+<div class="src-bar" id="explorer-src-bar">
+  <div class="src-bar-inner">
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-sa">Stats API</span>
+      <span class="src-list">AVG, OBP, SLG, OPS, HR, RBI, SB, ERA, WHIP, K/9, BB/9, HR/9</span>
+    </div>
+    <div class="src-div"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-adv">Advanced</span>
+      <span class="src-list">ISO, BABIP, BB%, K%, HR%, Whiff%, Contact%</span>
+    </div>
+    <div class="src-div"></div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="slbl slbl-calc">Computed</span>
+      <span class="src-list">wOBA, FIP, BB/K, K-BB%</span>
+    </div>
+    <span id="meta-txt">Loading&hellip;</span>
+  </div>
+</div>
+
+<section id="app-explorer" class="app-section app-visible">
+  <div class="app-explorer-inner">
+
+    <aside class="sidebar">
+      <div class="card">
+        <div class="card-lbl">X Axis</div>
+        <div class="sel-wrap"><select id="x-sel" onchange="MiLBExplorer.render()"></select></div>
+        <div class="ax-meta"><span id="x-src-tag"></span><span class="ax-desc" id="x-desc"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Y Axis</div>
+        <div class="sel-wrap"><select id="y-sel" onchange="MiLBExplorer.render()"></select></div>
+        <div class="ax-meta"><span id="y-src-tag"></span><span class="ax-desc" id="y-desc"></span></div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Filters</div>
+        <div class="filter-row">
+          <label class="filter-lbl">Search</label>
+          <div class="srch-wrap"><input type="text" id="srch" placeholder="Name or team&hellip;" oninput="MiLBExplorer.render()"></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Team</label>
+          <div class="sel-wrap"><select id="tm-sel" onchange="MiLBExplorer.render()"><option>All Teams</option></select></div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Age <span id="age-disp" style="color:var(--fg2)">17&ndash;30</span></label>
+          <div class="age-pair">
+            <input type="number" id="age-mn" value="17" min="16" max="35" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+            <input type="number" id="age-mx" value="30" min="16" max="35" onchange="MiLBExplorer.render();MiLBExplorer.updAge()">
+          </div>
+        </div>
+        <div class="filter-row">
+          <label class="filter-lbl" id="min-lbl">Min PA</label>
+          <input type="number" id="min-v" value="20" min="0" max="700" step="5" onchange="MiLBExplorer.render()">
+        </div>
+        <div class="filter-row" id="role-row" style="display:none">
+          <label class="filter-lbl">Role</label>
+          <div class="sel-wrap">
+            <select id="role-sel" onchange="MiLBExplorer.render()">
+              <option value="all">All</option>
+              <option value="SP">Starters</option>
+              <option value="RP">Relievers</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="count-card">
+          <div class="count-num" id="p-cnt">0</div>
+          <div class="count-lbl">Players Shown</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-lbl">Display</div>
+        <div class="toggle-row" onclick="MiLBExplorer.togNames()"><span class="toggle-lbl">Player Names</span><div class="tog" id="tog-n"></div></div>
+        <div class="toggle-row" onclick="MiLBExplorer.togQuads()" style="margin-top:4px"><span class="toggle-lbl">Quadrant Labels</span><div class="tog on" id="tog-q"></div></div>
+      </div>
+      <div class="card"><div class="card-lbl">Key</div><div id="legend"></div></div>
+      <div class="card">
+        <div class="card-lbl">Status</div>
+        <div class="milb-status" id="milb-status">Loading&hellip;</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="chart-card">
+        <div class="chart-head">
+          <div>
+            <div class="chart-title" id="c-title">&hellip;</div>
+            <div class="chart-sub" id="c-sub"></div>
+          </div>
+          <div class="chart-src-row" id="c-src-row"></div>
+        </div>
+        <div class="chart-body"><svg class="scatter" id="svg-plot" viewBox="0 0 900 470"></svg></div>
+        <div class="chart-footer">
+          <div class="toggle-row" onclick="MiLBExplorer.togNames()" style="cursor:pointer;gap:7px">
+            <div class="tog" id="tog-n2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Names</span>
+          </div>
+          <div class="toggle-row" onclick="MiLBExplorer.togQuads()" style="cursor:pointer;gap:7px">
+            <div class="tog on" id="tog-q2" style="flex-shrink:0"></div>
+            <span style="font-family:var(--fh);font-size:9px;letter-spacing:1.5px;color:var(--fg2);text-transform:uppercase">Quadrants</span>
+          </div>
+          <div class="cf-hint">Hover dots for stats &nbsp;&middot;&nbsp; Click column headers to sort</div>
+        </div>
+      </div>
+
+      <div class="tbl-card">
+        <div class="tbl-head">
+          <div class="tbl-title">A+ Leaderboard <span id="tbl-mode" style="color:var(--fg2);font-weight:400">&mdash; Hitters</span></div>
+          <div class="tbl-note" id="tbl-note">Sorted by Y-axis &darr;</div>
+        </div>
+        <div class="tbl-wrap"><table><thead id="t-head"></thead><tbody id="t-body"></tbody></table></div>
+      </div>
+    </main>
+  </div>
+
+  <footer class="explorer-footer">
+    <div class="footer-grid">
+      <div>
+        <div class="ft">Data Sources</div>
+        <div class="fi"><span class="fb" style="background:rgba(29,78,216,.08);color:#1D4ED8;border:1px solid rgba(29,78,216,.2);border-radius:4px;padding:2px 6px">Stats API</span>
+          <div class="fn">MLB Stats API &mdash; A+ hitter + pitcher season &amp; seasonAdvanced<br>
+            <a href="https://statsapi.mlb.com/api/v1/stats?stats=season&group=hitting&season=2026&sportId=13" target="_blank">statsapi.mlb.com/api/v1/stats &middot; sportId=13 (A+)</a></div></div>
+        <div class="fi"><span class="fb" style="background:rgba(4,120,87,.08);color:#047857;border:1px solid rgba(4,120,87,.2);border-radius:4px;padding:2px 6px">Computed</span>
+          <div class="fn">wOBA &mdash; 2024 FanGraphs linear weights on raw components<br>
+            FIP &mdash; standard formula with per-pool constant (league-avg FIP == league-avg ERA)</div></div>
+      </div>
+      <div>
+        <div class="ft">Methodology</div>
+        <div class="fn">
+          <b>Scope:</b> A+ hitters &amp; pitchers, full-season 2026<br>
+          <b>Leagues:</b> South Atlantic + Midwest + Northwest Leagues (sportId = 13)<br>
+          <b>Origin (0,0):</b> Filtered group average &mdash; quadrant colour = perf vs peers<br>
+          <b>Role:</b> SP if games started / games &ge; 50%, else RP<br>
+          <b>Tracking:</b> No Hawk-Eye at this level &mdash; no exit velocity, pitch velocity/movement, or spray data. Rate stats &amp; plate discipline (Whiff%/Contact%) are full-season Stats API.<br>
+          <b>Refresh:</b> GitHub Actions cron, daily at 08:30 UTC
+        </div>
+      </div>
+      <div>
+        <div class="ft">Disclaimer</div>
+        <div class="fn">All statistics &copy; <a href="https://www.mlb.com" target="_blank">MLB Advanced Media, L.P.</a><br>
+          Stats pulled live from the public MLB Stats API.<br>
+          For personal and educational use only.
+        </div>
+      </div>
+    </div>
+  </footer>
+</section>
+
+</div>
+
+<script>
+  window.MILB_LEVEL        = 'aplus';
+  window.MILB_HAS_STATCAST = false;
+  window.MILB_HAS_BBE      = false;  // no Hawk-Eye at A+ — omit spray/arsenal/movement panels
+  window.MILB_LEVEL_LABEL  = 'A+';
+</script>
+<script src="../js/milb-data.js"></script>
+<script src="../js/milb-cards.js"></script>
+<script src="../js/milb-explorer.js"></script>
+</body>
+</html>

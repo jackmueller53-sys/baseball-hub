@@ -1,20 +1,26 @@
 {
-  "fetchedAt": "2026-07-30T10:37:56.331Z",
+  "fetchedAt": "2026-07-30T23:42:43.836Z",
   "season": 2026,
   "enabled": true,
   "source": "statsapi.mlb.com",
   "endpoint": "/api/v1/stats (stats=season + seasonAdvanced + expectedStatistics + pitchArsenal)",
   "levels": [
     "aaa",
+    "aa",
+    "aplus",
     "fsl"
   ],
   "counts": {
     "aaa.sa-bat.json": 801,
-    "aaa.sa-pit.json": 1070,
+    "aaa.sa-pit.json": 1071,
+    "aa.sa-bat.json": 697,
+    "aa.sa-pit.json": 873,
+    "aplus.sa-bat.json": 688,
+    "aplus.sa-pit.json": 912,
     "fsl.sa-bat.json": 318,
     "fsl.sa-pit.json": 433
   },
-  "totalRows": 2622,
+  "totalRows": 5793,
   "errors": [],
   "prunedLegacy": [],
   "coverage": {
@@ -22,6 +28,18 @@
       "statsAPI": true,
       "statcast": false,
       "sportId": 11,
+      "leagueId": null
+    },
+    "aa": {
+      "statsAPI": true,
+      "statcast": false,
+      "sportId": 12,
+      "leagueId": null
+    },
+    "aplus": {
+      "statsAPI": true,
+      "statcast": false,
+      "sportId": 13,
       "leagueId": null
     },
     "fsl": {
