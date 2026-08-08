@@ -557,7 +557,10 @@ tr:hover td{background:rgba(0,0,0,.02)}
 
 
 /* ═══ TEAMS SUB-MODE ═══════════════════════════════════════════════════ */
-.teams-view { display:flex; flex-direction:column; gap:16px; }
+/* `:not([hidden])` so the `hidden` attribute actually hides it — a bare
+   `.teams-view { display:flex }` overrides `[hidden]{display:none}` and leaks
+   the (blank) team scatter into the default Hitters/Pitchers view. */
+.teams-view:not([hidden]) { display:flex; flex-direction:column; gap:16px; }
 
 .teams-grid {
   display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
@@ -702,6 +705,20 @@ tr:hover td{background:rgba(0,0,0,.02)}
   color:#9a6a13; background:rgba(214,158,46,.16); font-weight:600;
   cursor:help;
 }
+
+/* Team card: live record + playoff odds strip */
+.tc-record {
+  margin:10px 0 4px; padding:10px 14px; border-radius:8px;
+  background:rgba(45,36,24,.04); border:1px solid rgba(45,36,24,.08);
+  font-family:'Barlow Condensed', system-ui, sans-serif;
+}
+.tc-rec-line { display:flex; gap:10px; align-items:baseline; font-size:14px; color:#2d2418; margin:2px 0; }
+.tc-rec-line b { font-weight:700; }
+.tc-rec-lbl {
+  flex:0 0 92px; font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:#8a8278; font-weight:600;
+}
+.tc-rec-src { margin-top:6px; font-size:10px; letter-spacing:.3px; color:#9a938a; font-style:italic; }
 
 /* Roster-verification badge (Teams header) */
 .roster-verify {

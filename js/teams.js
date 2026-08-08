@@ -17,6 +17,7 @@
   let _bat = [], _pit = [];
   let _teams = [];                  // aggregated team rows
   let _rosters = null;              // data/rosters.json (authoritative team membership)
+  let _records = null;              // data/team-records.json (W-L + playoff odds)
   let _reconStats = null;           // { moved, updatedAt } summary for the verify badge
   let _xKey = 'wrcPlus', _yKey = 'eraMinus';
   let _loaded = false, _loading = null;
@@ -90,12 +91,22 @@
           } catch (_) {}
           return null;
         }
-        const [bat, pit, rosters] = await Promise.all([
+        // team-records.json: live W-L (MLB) + playoff odds (FanGraphs). Optional.
+        async function loadRecords() {
+          try {
+            const r = await fetch('data/team-records.json', { cache: 'no-cache' });
+            if (r.ok) return r.json();
+          } catch (_) {}
+          return null;
+        }
+        const [bat, pit, rosters, records] = await Promise.all([
           fetch('data/fg-bat.json').then(r => r.json()),
           loadPit(),
           loadRosters(),
+          loadRecords(),
         ]);
         _rosters = (rosters && rosters.byPlayer) ? rosters : null;
+        _records = (records && records.teams) ? records : null;
         _bat = (Array.isArray(bat) ? bat : []).map((r) => ({
           ...r,
           PlayerName: stripHTML(r.PlayerName || r.Name),
@@ -432,6 +443,32 @@
     });
   }
 
+  // Live record (MLB Stats API) + playoff odds (FanGraphs) strip for the card.
+  // Both sources are clearly attributed. Returns '' when data isn't loaded.
+  function recordStrip(t) {
+    const R = _records && _records.teams ? _records.teams[t.team] : null;
+    if (!R) return '';
+    const ord = (n) => n == 1 ? '1st' : n == 2 ? '2nd' : n == 3 ? '3rd' : (n + 'th');
+    const oddPct = (v) => v == null ? null : (v >= 0.9995 ? '100%' : v <= 0.0005 ? '0%' : (v * 100).toFixed(1) + '%');
+    const rec = [];
+    if (R.w != null && R.l != null) rec.push(`<b>${R.w}–${R.l}</b>${R.pct ? ` (${esc(String(R.pct))})` : ''}`);
+    if (R.divRank) rec.push(esc(ord(R.divRank)) + ' in division');
+    // GB only when trailing; a 1st-place rank already conveys leading.
+    if (R.gamesBack && R.gamesBack !== '-') rec.push(esc(String(R.gamesBack)) + ' GB');
+    if (R.streak) rec.push('Streak ' + esc(R.streak));
+    const odds = [];
+    if (R.playoffPct != null)     odds.push(`Playoffs <b>${oddPct(R.playoffPct)}</b>`);
+    if (R.divisionPct != null)    odds.push(`Division ${oddPct(R.divisionPct)}`);
+    if (R.worldSeriesPct != null) odds.push(`World Series ${oddPct(R.worldSeriesPct)}`);
+    if (!rec.length && !odds.length) return '';
+    return `
+      <div class="tc-record">
+        ${rec.length ? `<div class="tc-rec-line"><span class="tc-rec-lbl">Record</span><span>${rec.join(' · ')}</span></div>` : ''}
+        ${odds.length ? `<div class="tc-rec-line"><span class="tc-rec-lbl">Playoff Odds</span><span>${odds.join(' · ')}</span></div>` : ''}
+        <div class="tc-rec-src">Record: MLB.com · Playoff odds: FanGraphs</div>
+      </div>`;
+  }
+
   // ── Team card modal ──
   function openTeamCard(teamAbbr) {
     const t = _teams.find(x => x.team === teamAbbr);
@@ -453,6 +490,8 @@
           <span class="tcm">Pit WAR <b>${fmtVal(t.pitWAR, 'pitWAR')}</b></span>
         </div>
       </div>
+
+      ${recordStrip(t)}
 
       <div class="tc-grid">
         <div class="tc-section">

@@ -43,6 +43,9 @@ jobs:
       - name: Fetch active rosters (MLB Stats API)
         run: node scripts/fetch-rosters.js
 
+      - name: Fetch team records + playoff odds (MLB + FanGraphs)
+        run: node scripts/fetch-team-records.js
+
       - name: Check for data changes
         id: check
         run: |
