@@ -23,6 +23,7 @@ const H_AXES = [
   {k:"xba",       lbl:"xBA",       src:"sv", d:"Expected batting average",                    dir: 1},
   {k:"xslg",      lbl:"xSLG",      src:"sv", d:"Expected slugging percentage",                dir: 1},
   {k:"hard_hit",  lbl:"Hard Hit%", src:"sv", d:"Exit velocity >= 95 mph rate",                dir: 1},
+  {k:"bat_speed", lbl:"Bat Speed", src:"sv", d:"Average bat speed (mph, Savant bat-tracking)", dir: 1},
   {k:"sprint_spd",lbl:"Sprint Spd",src:"sv", d:"Sprint speed ft/s (27 = avg)",                dir: 1},
   {k:"ops",       lbl:"OPS",       src:"fg", d:"On-base plus slugging",                       dir: 1},
   {k:"hr",        lbl:"HR",        src:"fg", d:"Home runs",                                   dir: 1},
