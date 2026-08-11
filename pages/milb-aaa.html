@@ -140,6 +140,17 @@
           <label class="filter-lbl" id="min-lbl">Min PA</label>
           <input type="number" id="min-v" value="30" min="0" max="700" step="5" onchange="MiLBExplorer.render()">
         </div>
+        <div class="filter-row">
+          <label class="filter-lbl">Stat Filter</label>
+          <div class="sel-wrap"><select id="stat-filt-sel" onchange="MiLBExplorer.render()"><option value="">None</option></select></div>
+        </div>
+        <div class="filter-row" id="stat-filt-row2" style="display:none">
+          <div class="sel-wrap" style="flex:0 0 62px"><select id="stat-filt-op" onchange="MiLBExplorer.render()">
+            <option value="gt">&gt;</option><option value="gte">&ge;</option>
+            <option value="lt">&lt;</option><option value="lte">&le;</option>
+          </select></div>
+          <input type="number" id="stat-filt-val" step="any" placeholder="value" oninput="MiLBExplorer.render()" style="flex:1;min-width:0">
+        </div>
         <div class="filter-row" id="role-row" style="display:none">
           <label class="filter-lbl">Role</label>
           <div class="sel-wrap">

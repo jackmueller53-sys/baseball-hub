@@ -131,6 +131,16 @@ function buildAxes() {
     }
     if (s.selectedIndex < 0) s.selectedIndex = i;
   });
+  // Stat-filter dropdown uses the same axis catalog (adapts to hitters/pitchers)
+  // with a leading "None" option; preserve the current selection across rebuilds.
+  var sf = document.getElementById('stat-filt-sel');
+  if (sf) {
+    var prev = sf.value;
+    sf.innerHTML = '<option value="">None</option>' + ax.map(function (a) { return '<option value="' + a.k + '">' + a.lbl + '</option>'; }).join('');
+    sf.value = ax.some(function (a) { return a.k === prev; }) ? prev : '';
+    var row2 = document.getElementById('stat-filt-row2');
+    if (row2) row2.style.display = sf.value ? '' : 'none';
+  }
   updDesc();
 }
 
@@ -181,6 +191,15 @@ function filt() {
   var mv   = +document.getElementById('min-v').value;
   var role = document.getElementById('role-sel').value;
   var q    = (document.getElementById('srch').value || '').toLowerCase().trim();
+  // Stat-threshold filter (e.g. wRC+ > 100). Active only when a stat is chosen
+  // and a numeric value entered; players missing that stat are excluded.
+  var sfKey = (document.getElementById('stat-filt-sel') || {}).value || '';
+  var sfOp  = (document.getElementById('stat-filt-op') || {}).value || 'gt';
+  var sfRaw = (document.getElementById('stat-filt-val') || {}).value;
+  var sfVal = (sfRaw === '' || sfRaw == null) ? null : parseFloat(sfRaw);
+  var sfRow2 = document.getElementById('stat-filt-row2');
+  if (sfRow2) sfRow2.style.display = sfKey ? '' : 'none';
+  var sfActive = sfKey && sfVal != null && !isNaN(sfVal);
   return d.filter(function (p) {
     if (tm !== 'All Teams' && p.team !== tm) return false;
     if (p.age && (p.age < amn || p.age > amx)) return false;
@@ -188,6 +207,14 @@ function filt() {
     if (MODE === 'pitchers' && (p.ip || 0) < mv) return false;
     if (MODE === 'pitchers' && role !== 'all' && p.role !== role) return false;
     if (q && !(p.name || '').toLowerCase().includes(q) && !(p.team || '').toLowerCase().includes(q)) return false;
+    if (sfActive) {
+      var v = p[sfKey];
+      if (v == null || isNaN(v)) return false;
+      if (sfOp === 'gt'  && !(v > sfVal))  return false;
+      if (sfOp === 'gte' && !(v >= sfVal)) return false;
+      if (sfOp === 'lt'  && !(v < sfVal))  return false;
+      if (sfOp === 'lte' && !(v <= sfVal)) return false;
+    }
     return true;
   });
 }
