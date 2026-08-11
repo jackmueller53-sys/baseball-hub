@@ -319,9 +319,13 @@ async function fetchSavantXStats(type, minPA) {
 }
 
 // Savant Sprint Speed (returns CSV)
+// Uses the sprint_speed leaderboard, which exposes a `sprint_speed` (ft/s)
+// column keyed by `player_id` (MLBAM). The old running_splits endpoint only
+// returned seconds_since_hit_* splits — no usable sprint-speed field — so
+// player.sprint_spd was silently null on every live card.
 async function fetchSavantSprint() {
-  const url = `https://baseballsavant.mlb.com/running_splits`
-    + `?type=running&bats=&year=${SEASON}&position=&team=&min=10&csv=true`;
+  const url = `https://baseballsavant.mlb.com/leaderboard/sprint_speed`
+    + `?year=${SEASON}&position=&team=&min=10&csv=true`;
 
   console.log(`  Fetching Savant sprint speed...`);
   const text = await fetchURL(url);
@@ -332,6 +336,33 @@ async function fetchSavantSprint() {
   }
 
   const rows = parseCSV(text);
+  console.log(`    → ${rows.length} rows`);
+  return rows;
+}
+
+// Savant Bat Speed (bat-tracking leaderboard, CSV). Exposes avg_bat_speed
+// (mph) + swing-quality rates keyed by `id` (MLBAM). Slim to the fields the
+// hitter card reads so the file stays small.
+async function fetchSavantBatSpeed() {
+  const url = `https://baseballsavant.mlb.com/leaderboard/bat-tracking`
+    + `?attackZone=&batSide=&contactType=&count=&dateStart=&dateEnd=&gameType=&isHardHit=`
+    + `&minSwings=100&minGroupSwings=1&pitchHand=&pitchType=&seasonStart=${SEASON}&seasonEnd=${SEASON}`
+    + `&team=&type=batter&csv=true`;
+
+  console.log(`  Fetching Savant bat speed...`);
+  const text = await fetchURL(url);
+
+  if (text.trim().startsWith('<!') || text.trim().startsWith('<html')) {
+    console.log(`    → HTML response (no data yet)`);
+    return [];
+  }
+
+  const rows = parseCSV(text).map((r) => ({
+    id: r['id'],
+    avg_bat_speed: r['avg_bat_speed'],
+    hard_swing_rate: r['hard_swing_rate'],
+    squared_up_per_swing: r['squared_up_per_swing'],
+  })).filter((r) => r.id != null && r.avg_bat_speed !== '' && r.avg_bat_speed != null);
   console.log(`    → ${rows.length} rows`);
   return rows;
 }
@@ -459,6 +490,11 @@ async function main() {
   try { results.svSprint = await fetchSavantSprint(); }
   catch (e) { errors.push(`Savant sprint: ${e.message}`); results.svSprint = []; console.error(`    ERROR: ${e.message}`); }
 
+  // ── Savant Bat Speed (bat-tracking) ──
+  console.log('\nSavant Bat Speed');
+  try { results.svBatSpeed = await fetchSavantBatSpeed(); }
+  catch (e) { errors.push(`Savant bat speed: ${e.message}`); results.svBatSpeed = []; console.error(`    ERROR: ${e.message}`); }
+
   // ── Save all data files ──
   console.log('\n── Saving data files ──');
   saveJSON('fg-bat.json', results.fgBat);
@@ -489,6 +525,7 @@ async function main() {
   saveJSON('sv-bat.json', results.svBat);
   saveJSON('sv-pit.json', results.svPit);
   saveJSON('sv-sprint.json', results.svSprint);
+  saveJSON('sv-batspeed.json', results.svBatSpeed);
 
   // ── Save metadata ──
   const meta = {
@@ -510,7 +547,8 @@ async function main() {
       fgPit30d: (results.fgPitRanges && results.fgPitRanges[30] || []).length,
       svBat: results.svBat.length,
       svPit: results.svPit.length,
-      svSprint: results.svSprint.length
+      svSprint: results.svSprint.length,
+      svBatSpeed: (results.svBatSpeed || []).length
     },
     errors: errors
   };

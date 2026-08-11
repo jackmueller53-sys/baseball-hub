@@ -2121,6 +2121,31 @@ function rollingChartHTML(idPrefix, metrics, defaultMetric) {
 }
 
 // ── HITTER CARD RENDERING ───────────────────────────────────────────────
+// Speed & Baserunning panel — Sprint Speed (Savant) + Stolen Bases and SB
+// success rate SB/(SB+CS) (FanGraphs). Rendered as a compact stat row.
+function renderHitterSpeedSection(player) {
+  const sp  = player.sprint_spd;
+  const sb  = player.sb  != null ? Math.round(player.sb) : null;
+  const cs  = player.cs  != null ? Math.round(player.cs) : null;
+  const att = (sb || 0) + (cs || 0);
+  const succ = att > 0 ? (sb || 0) / att * 100 : null;
+  const spTxt   = sp   != null ? sp.toFixed(1) + ' <span style="font-size:11px;color:var(--fg2)">ft/s</span>' : '--';
+  const sbTxt   = sb   != null ? sb : '--';
+  const succTxt = succ != null ? succ.toFixed(0) + '%' : '--';
+  const attTxt  = att  > 0 ? `${sb || 0} of ${att} att` : 'no attempts';
+  return `
+    <div class="pc-row">
+      <div class="stat-section">
+        <div class="cp-title">Speed &amp; Baserunning<span class="cp-src cp-src-sv">Savant · FanGraphs</span></div>
+        <div class="pc-stats-row">
+          <div class="pc-stat"><div class="pc-stat-val">${spTxt}</div><div class="pc-stat-lbl">Sprint Speed</div></div>
+          <div class="pc-stat"><div class="pc-stat-val">${sbTxt}</div><div class="pc-stat-lbl">Stolen Bases</div></div>
+          <div class="pc-stat"><div class="pc-stat-val">${succTxt}</div><div class="pc-stat-lbl">SB Success · ${attTxt}</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
 async function renderHitterCard(player, season) {
   const content = document.getElementById("pc-overlay-content");
   const initials = (player.name || "?").split(/\s+/).slice(0,2).map(w=>w[0]).join("").toUpperCase();
@@ -2147,8 +2172,9 @@ async function renderHitterCard(player, season) {
   </div>`;
 
   if (!player.mlbam_id) {
-    html += `<div style="padding:30px;background:var(--panel)">
-      <div class="pc-error">No Statcast ID available for detailed batted ball data.</div>
+    html += `<div class="pc-body">
+      ${renderHitterSpeedSection(player)}
+      <div class="pc-error" style="margin:0 14px">No Statcast ID available for detailed batted ball data.</div>
       ${renderHitterStatSummary(player)}
     </div>`;
     content.innerHTML = html;
@@ -2158,8 +2184,9 @@ async function renderHitterCard(player, season) {
   const batData = await fetchHitterStatcast(player.mlbam_id, season);
 
   if (!batData || !batData.length) {
-    html += `<div style="padding:30px;background:var(--panel)">
-      <div class="pc-error">Statcast batted ball data unavailable (CORS proxy timeout or no data for ${season}). Charts require Statcast access.</div>
+    html += `<div class="pc-body">
+      ${renderHitterSpeedSection(player)}
+      <div class="pc-error" style="margin:0 14px">Statcast batted ball data unavailable (CORS proxy timeout or no data for ${season}). Charts require Statcast access.</div>
       ${renderHitterStatSummary(player)}
     </div>`;
     content.innerHTML = html;
@@ -2187,6 +2214,7 @@ async function renderHitterCard(player, season) {
         <div class="chart-area" id="pc-evla"></div>
       </div>
     </div>
+    ${renderHitterSpeedSection(player)}
     ${renderHitterStatSummary(player)}
     ${rollingChartHTML("hitter", HITTER_ROLLING_METRICS, "woba")}
   </div>`;
@@ -2195,7 +2223,7 @@ async function renderHitterCard(player, season) {
 
   // Render the actual charts
   renderHitterSpray(batData);
-  renderHitterEvLA(batData);
+  renderHitterEvLA(batData, player);
   renderHitterZoneHeat(batData);
   renderHitterBBProfile(batData, player);
 
@@ -2352,7 +2380,7 @@ function renderHitterSpray(data) {
   container.innerHTML = svg + legend;
 }
 
-function renderHitterEvLA(data) {
+function renderHitterEvLA(data, player) {
   const container = document.getElementById("pc-evla");
   if (!container) return;
 
@@ -2720,6 +2748,8 @@ function renderHitterBBProfile(data, player) {
 
   html += `<tr><td style="color:var(--fg2)">Avg Exit Velo</td><td>${avgEv.toFixed(1)} mph</td>${vsAvg(avgEv, 88.9, "f1")}</tr>`;
   html += `<tr><td style="color:var(--fg2)">Max Exit Velo</td><td>${maxEv.toFixed(1)} mph</td>${vsAvg(maxEv, 109.7, "f1")}</tr>`;
+  // Bat speed (Savant bat-tracking) — league avg ~71.5 mph, higher is better.
+  if(player.bat_speed != null) html += `<tr><td style="color:var(--fg2)">Bat Speed</td><td>${player.bat_speed.toFixed(1)} mph</td>${vsAvg(player.bat_speed, 71.5, "f1")}</tr>`;
   html += `<tr><td style="color:var(--fg2)">Barrel%</td><td>${barrelPct.toFixed(1)}%</td>${vsAvg(barrelPct, 8.4, "f1")}</tr>`;
   html += `<tr><td style="color:var(--fg2)">Hard Hit%</td><td>${hardPct.toFixed(1)}%</td>${vsAvg(hardPct, 38.3, "f1")}</tr>`;
   html += `<tr><td style="color:var(--fg2)">Sweet Spot%</td><td>${sweetPct.toFixed(1)}%</td>${vsAvg(sweetPct, 34.9, "f1")}</tr>`;
@@ -2732,12 +2762,34 @@ function renderHitterBBProfile(data, player) {
 }
 
 // ── ROW MAPPERS ──────────────────────────────────────────────────────────────
+// Sprint speed (Savant sprint_speed leaderboard) and bat speed (Savant
+// bat-tracking) both key cleanly on MLBAM id — far more reliable than the
+// name-based Savant join. Populate these module maps whenever the data loads;
+// mapHitter reads them by the player's MLBAM id.
+let _sprintById = {};
+let _batSpeedById = {};
+function buildSpeedMaps(spRows, bsRows){
+  _sprintById = {};
+  _batSpeedById = {};
+  (Array.isArray(spRows) ? spRows : []).forEach(r => {
+    const id = r && (r.player_id || r.id);
+    const v = nf(r && (r.sprint_speed || r.r_sprint_speed_top50p));
+    if(id != null && v != null) _sprintById[String(id)] = v;
+  });
+  (Array.isArray(bsRows) ? bsRows : []).forEach(r => {
+    const id = r && (r.id || r.player_id);
+    const v = nf(r && (r.avg_bat_speed || r.bat_speed));
+    if(id != null && v != null) _batSpeedById[String(id)] = v;
+  });
+}
+
 function mapHitter(fg, sv, sp){
   // FanGraphs ships team as HTML <a> link; strip to plain abbreviation so the
   // team-filter dropdown can do an exact-match comparison (was matching on a
   // 135-char HTML string and never finding any rows).
   const teamRaw = stripHTML(fg["Team"]||fg["team"]||"");
   const team = (teamRaw==="- - -"||teamRaw==="---") ? (sv?sv["team_name_abbrev"]||"":"") : teamRaw;
+  const mlbamId = nf(fg["xMLBAMID"]) || nf(fg["MLBAMID"]) || nf(fg["mlbamid"]) || (sv ? nf(sv["player_id"]) : null);
   return {
     name:       stripHTML(fg["Name"]||fg["PlayerName"]||""),
     team,
@@ -2752,6 +2804,7 @@ function mapHitter(fg, sv, sp){
     hr:         nf(fg["HR"]||fg["hr"]),
     rbi:        nf(fg["RBI"]||fg["rbi"]),
     sb:         nf(fg["SB"]||fg["sb"]),
+    cs:         nf(fg["CS"]||fg["cs"]),
     wrc_plus:   nf(fg["wRC+"]||fg["wRCPlus"]||fg["wrc_plus"]),
     woba:       nf(fg["wOBA"]||fg["woba"]),
     war:        nf(fg["WAR"]||fg["war"]),
@@ -2773,12 +2826,15 @@ function mapHitter(fg, sv, sp){
     hard_hit:   nf(fg["HardHit%"]) != null ? nf(fg["HardHit%"]) * 100
                 : nf(fg["Hard%"]) != null ? nf(fg["Hard%"]) * 100
                 : (sv ? nf(sv["hard_hit_percent"]||sv["hard_hit"]) : null),
-    // Sprint speed
-    sprint_spd: sp ? nf(sp["hp_to_1b"]||sp["sprint_speed"]||sp["r_sprint_speed_top50p"]) : null,
+    // Sprint speed (Savant) + bat speed (Savant bat-tracking) — joined by
+    // MLBAM id via the module maps; fall back to any inline sprint field.
+    sprint_spd: (mlbamId != null && _sprintById[mlbamId] != null) ? _sprintById[mlbamId]
+                : (sp ? nf(sp["sprint_speed"]||sp["r_sprint_speed_top50p"]) : null),
+    bat_speed:  (mlbamId != null && _batSpeedById[mlbamId] != null) ? _batSpeedById[mlbamId] : null,
     // Player IDs for Statcast
     // Primary: FanGraphs xMLBAMID (available for nearly all FG players)
     // Fallback: Savant player_id (only if name match succeeded)
-    mlbam_id:   nf(fg["xMLBAMID"]) || nf(fg["MLBAMID"]) || nf(fg["mlbamid"]) || (sv ? nf(sv["player_id"]) : null),
+    mlbam_id:   mlbamId,
     fg_id:      fg["playerid"] || null,
   };
 }
@@ -3209,6 +3265,9 @@ async function loadStaticData2026(){
 
     setProg(19, "Loading static Savant sprint...");
     spd = await fetchStaticFile("sv-sprint.json") || [];
+
+    const batSpeed = await fetchStaticFile("sv-batspeed.json") || [];
+    buildSpeedMaps(spd, batSpeed);   // MLBAM-id maps read by mapHitter
 
     // Record snapshot age for the background-refresh gate AND surface a
     // staleness banner when meta.errors mentions FG — Cloudflare has been
