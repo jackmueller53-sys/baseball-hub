@@ -2877,8 +2877,15 @@ function mapPitcher(fg, sv, disc){
     brl_pct: nf(fg["Barrel%"]) != null ? nf(fg["Barrel%"]) * 100
              : (sv ? nf(sv["barrel_batted_rate"]||sv["brl_percent"]||sv["barrelBattedRate"]) : null),
     ev:      nf(fg["EV"]) || (sv ? nf(sv["avg_hit_speed"]||sv["exit_velocity_avg"]||sv["exitVelocity"]) : null),
-    whiff:   sv ? nf(sv["whiff_percent"]||sv["whiff_pct"]||sv["whiffPercent"]) : null,
-    velo:    sv ? nf(sv["avg_best_speed"]||sv["ff_avg_speed"]||sv["release_speed_avg"]||sv["pitchVelocity"]) : null,
+    // Whiff% = swings-and-misses per swing = 100 − Contact%. Savant's
+    // expected_statistics feed has no whiff field, so derive from FG Contact%
+    // (a decimal, e.g. 0.646). Fall back to the plate-discipline file, then sv.
+    whiff:   fg["Contact%"]!=null ? (100 - pct(fg["Contact%"]))
+             : (disc && disc["Contact%"]!=null ? (100 - pct(disc["Contact%"]))
+             : (sv ? nf(sv["whiff_percent"]||sv["whiff_pct"]||sv["whiffPercent"]) : null)),
+    // Fastball velocity from FanGraphs FBv (Savant's feed has no velo field).
+    velo:    nf(fg["FBv"]) || nf(fg["pivFA"]) || nf(fg["pfxvFA"])
+             || (sv ? nf(sv["avg_best_speed"]||sv["ff_avg_speed"]||sv["release_speed_avg"]||sv["pitchVelocity"]) : null),
     // Player IDs — FanGraphs xMLBAMID is the most reliable cross-reference
     mlbam_id: nf(fg["xMLBAMID"]) || nf(fg["MLBAMID"]) || nf(fg["mlbamid"]) || (sv ? nf(sv["player_id"]) : null),
     fg_id:    fg["playerid"] || null,
