@@ -66,6 +66,10 @@ const P_TIP = [
 // ── STATE ────────────────────────────────────────────────────────────────────
 let SEASON=2025, MODE="hitters", NAMES=false, QUADS=true, SCOL=null, SDIR=1;
 let _fetching26=false;
+// Monotonic load token. Bumped on every explicit user data action (season /
+// date-range change) so a slow background live-refresh that finishes later can
+// tell it has been superseded and must NOT clobber the current view.
+let _loadGen=0;
 
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 const mean = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
@@ -3032,6 +3036,11 @@ function setDatePreset(btn){
   if(SEASON === 2026){
     clearCache();
     DB[2026].loaded = false;
+    // Supersede any in-flight background refresh and release its lock so this
+    // explicit click is never blocked (loadLive2026 bails while _fetching26 is
+    // true). The date-range static load below is fast and local.
+    _loadGen++;
+    _fetching26 = false;
     loadLive2026(true);
   }
 }
@@ -3170,13 +3179,33 @@ function _labelToDays(label) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+// Number of days in the active range (preset or custom), or null for full season.
+function _rangeDays() {
+  if (!_dateRange) return null;
+  const d = _labelToDays(_dateRange.label);
+  if (d) return d;
+  const a = new Date(_dateRange.startdate), b = new Date(_dateRange.enddate);
+  const diff = Math.round((b - a) / 86400000);
+  return isFinite(diff) && diff > 0 ? diff : 14;
+}
+
+// Playing-time minimums for a rolling window MUST scale to the window, not the
+// full-season minimum. A regular accrues ~2 PA / game and teams play ~1 game a
+// day, so scale by days. Using the full-season min (× 0.3 ≈ 75 AB) filtered out
+// EVERY player in a 7- or 14-day window → the date buttons showed 0 players.
+function _dateRangeThresholds(days) {
+  const d = days || 14;
+  return {
+    dateMinAB: Math.max(1, Math.round(d * 0.8)),   // ~0.8 AB/day floor (7d→6, 14d→11, 30d→24)
+    dateMinIP: Math.max(0.5, Math.round(d * 0.4 * 10) / 10), // ~0.4 IP/day (7d→2.8, 14d→5.6, 30d→12)
+  };
+}
+
 // ── DATE-RANGE STATIC LOADER ────────────────────────────────────────────────
 // Uses the cron-produced data/fg-bat-{days}d.json + fg-pit-{days}d.json files
 // (plus full-season Savant, which has no easy date-filter equivalent).
 async function loadStaticDateRange2026(days) {
-  const { minAB, minIP } = getSeasonThresholds();
-  const dateMinAB = Math.max(1, Math.round(minAB * 0.3));
-  const dateMinIP = Math.max(0.1, minIP * 0.3);
+  const { dateMinAB, dateMinIP } = _dateRangeThresholds(days);
 
   const fetchFile = async (filename) => {
     try {
@@ -3223,8 +3252,9 @@ async function loadStaticDateRange2026(days) {
 // Returns true if data was loaded successfully, false otherwise.
 async function loadStaticData2026(){
   const { minAB, minIP } = getSeasonThresholds();
-  const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
-  const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
+  const _dr = _dateRange ? _dateRangeThresholds(_rangeDays()) : null;
+  const dateMinAB = _dr ? _dr.dateMinAB : minAB;
+  const dateMinIP = _dr ? _dr.dateMinIP : minIP;
 
   let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
 
@@ -3336,8 +3366,9 @@ async function loadLive2026(forceRefresh){
   setProg(0,"Fetching 2026 data...");
 
   const { fgQualBat, fgQualPit, svMin, minAB, minIP } = getSeasonThresholds();
-  const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
-  const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
+  const _dr = _dateRange ? _dateRangeThresholds(_rangeDays()) : null;
+  const dateMinAB = _dr ? _dr.dateMinAB : minAB;
+  const dateMinIP = _dr ? _dr.dateMinIP : minIP;
 
   let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
   let errors = [];
@@ -3522,6 +3553,7 @@ function manualRefresh(){
 // Does not display progress bar or block UI, only logs errors if they occur
 async function refreshLiveDataInBackground(){
   if(_fetching26) return;
+  const myGen = _loadGen;   // if this changes, a user action superseded us
 
   // Skip the live refresh when our static snapshot is fresh enough.
   // GitHub Actions writes data/*.json + meta.json daily; if the snapshot is
@@ -3537,8 +3569,9 @@ async function refreshLiveDataInBackground(){
   _fetching26 = true;
 
   const { fgQualBat, fgQualPit, svMin, minAB, minIP } = getSeasonThresholds();
-  const dateMinAB = _dateRange ? Math.max(1, Math.round(minAB * 0.3)) : minAB;
-  const dateMinIP = _dateRange ? Math.max(0.1, minIP * 0.3) : minIP;
+  const _dr = _dateRange ? _dateRangeThresholds(_rangeDays()) : null;
+  const dateMinAB = _dr ? _dr.dateMinAB : minAB;
+  const dateMinIP = _dr ? _dr.dateMinIP : minIP;
 
   let fgBat=[], fgPit=[], svBat=[], svPit=[], spd=[], discPit=[];
   let errors = [];
@@ -3569,6 +3602,12 @@ async function refreshLiveDataInBackground(){
     try { spd = await fetchSavantSprint(2026); }
     catch(e){ errors.push("Savant spd: "+e.message); }
 
+    // A user changed season/date-range while our slow live fetch was in
+    // flight — discard this stale result rather than overwrite their view.
+    if(myGen !== _loadGen){
+      console.log("[refreshLiveDataInBackground] superseded by a newer load; discarding");
+      return;
+    }
     // If we got any live data, merge and update (silently)
     if(fgBat.length > 0 || fgPit.length > 0){
       const newHitters  = fgBat.length > 0 ? mergeHitters(fgBat, svBat, spd, dateMinAB) : DB[2026].hitters;
@@ -3697,7 +3736,16 @@ function filt(){
   const tm   = document.getElementById("tm-sel").value;
   const amn  = +document.getElementById("age-mn").value;
   const amx  = +document.getElementById("age-mx").value;
-  const mv   = +document.getElementById("min-v").value;
+  let   mv   = +document.getElementById("min-v").value;
+  // When a rolling date range is active, players have only window-sized AB/IP
+  // (~45 AB / ~6 IP over 14 days). The full-season Min AB/IP would wipe them
+  // all out, so cap the effective minimum at the window-scaled threshold —
+  // this is what made the date buttons show an empty dashboard.
+  if(_dateRange){
+    const t = _dateRangeThresholds(_rangeDays());
+    const winMin = MODE==="hitters" ? t.dateMinAB : t.dateMinIP;
+    mv = Math.min(mv, winMin);
+  }
   const role = document.getElementById("role-sel").value;
   const q    = (document.getElementById("srch").value||"").toLowerCase().trim();
   // Stat-threshold filter (e.g. wRC+ > 100). Only active when a stat is chosen
