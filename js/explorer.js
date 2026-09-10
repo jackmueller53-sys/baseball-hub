@@ -3731,7 +3731,7 @@ function updAge(){
 }
 
 // ── FILTER ───────────────────────────────────────────────────────────────────
-function filt(){
+function filt(skipSearch){
   const d=dat(); if(!d||!d.length) return [];
   const tm   = document.getElementById("tm-sel").value;
   const amn  = +document.getElementById("age-mn").value;
@@ -3763,7 +3763,7 @@ function filt(){
     if(MODE==="hitters"  && (p.ab||p.pa||0)<mv) return false;
     if(MODE==="pitchers" && (p.ip||0)<mv) return false;
     if(MODE==="pitchers" && role!=="all" && p.role!==role) return false;
-    if(q && !(p.name||"").toLowerCase().includes(q) && !(p.team||"").toLowerCase().includes(q)) return false;
+    if(!skipSearch && q && !(p.name||"").toLowerCase().includes(q) && !(p.team||"").toLowerCase().includes(q)) return false;
     if(sfActive){
       const v=p[sfKey];
       if(v==null||isNaN(v)) return false;
@@ -3779,29 +3779,41 @@ function filt(){
 // ── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
   updDesc();
-  const f=filt(), xKey=xk(), yKey=yk();
+  const xKey=xk(), yKey=yk();
+  // The name/team SEARCH must not move any dot — it only locates a player in
+  // the existing layout. So the scatter's coordinate system (origin + scale)
+  // is built from the "cohort": every player passing the sidebar filters
+  // EXCEPT the search box. Search then just highlights the matches in place.
+  const cohort = filt(true);
+  const q = (document.getElementById("srch").value||"").toLowerCase().trim();
+  const isMatch = p => !q || (p.name||"").toLowerCase().includes(q) || (p.team||"").toLowerCase().includes(q);
+  const matched = q ? cohort.filter(isMatch) : cohort;   // for the table + count
   const ax=axes(), xa=ax.find(a=>a.k===xKey), ya=ax.find(a=>a.k===yKey);
   const xl=xa?xa.lbl:xKey, yl=ya?ya.lbl:yKey;
-  document.getElementById("p-cnt").textContent=f.length;
+  document.getElementById("p-cnt").textContent=matched.length;
   document.getElementById("c-title").innerHTML=xl+" <em>vs</em> "+yl;
   document.getElementById("c-src-row").innerHTML=(xa?srcTag(xa.src):"")+" "+(ya?srcTag(ya.src):"");
-  const xvs=f.map(p=>p[xKey]).filter(v=>v!=null&&!isNaN(v));
-  const yvs=f.map(p=>p[yKey]).filter(v=>v!=null&&!isNaN(v));
+  // Averages (the origin) come from the cohort — unchanged by the search box.
+  const xvs=cohort.map(p=>p[xKey]).filter(v=>v!=null&&!isNaN(v));
+  const yvs=cohort.map(p=>p[yKey]).filter(v=>v!=null&&!isNaN(v));
   const xA=mean(xvs), yA=mean(yvs);
   const rangeTag = (SEASON===2026 && _dateRange)
     ? " &nbsp;&middot;&nbsp; <span style=\"color:var(--gold)\">"+_dateRange.label+"</span>"
     : "";
+  const countTxt = q ? (matched.length+" match"+(matched.length===1?"":"es")+" of "+cohort.length) : (cohort.length+"/"+dat().length+" players");
   document.getElementById("c-sub").innerHTML=
     "Origin = filtered average &nbsp;&middot;&nbsp; "+xl+" avg: <b>"+fv(xA)+"</b>"
     +" &nbsp;&middot;&nbsp; "+yl+" avg: <b>"+fv(yA)+"</b>"
-    +" &nbsp;&middot;&nbsp; <span style=\"color:var(--fg2)\">"+f.length+"/"+dat().length+" players</span>"
+    +" &nbsp;&middot;&nbsp; <span style=\"color:var(--fg2)\">"+countTxt+"</span>"
     + rangeTag;
-  document.getElementById("meta-txt").textContent=f.length+" of "+dat().length+" players";
+  document.getElementById("meta-txt").textContent=matched.length+" of "+dat().length+" players";
   // dir: polarity multiplier — positive deviation = "better" for that stat
   const xDir = xa ? (xa.dir||1) : 1;
   const yDir = ya ? (ya.dir||1) : 1;
 
-  const cd=f.map(p=>{
+  // Build coords for the FULL cohort so every dot keeps its position; tag which
+  // ones match the search so the scatter can highlight/dim without moving them.
+  const cd=cohort.map(p=>{
     const rawDiffX = p[xKey]!=null ? p[xKey]-xA : null;
     const rawDiffY = p[yKey]!=null ? p[yKey]-yA : null;
     return {
@@ -3813,13 +3825,17 @@ function render(){
       px: rawDiffX!=null ? rawDiffX * xDir : null,  // performance deviation (positive = better)
       py: rawDiffY!=null ? rawDiffY * yDir : null,
       xDir, yDir,
+      _match: isMatch(p),
     };
   });
-  drawScatter(cd,xl,yl,xDir,yDir); drawLegend(xl,yl,xDir,yDir); drawTable(cd,xl,yl);
+  drawScatter(cd,xl,yl,xDir,yDir,!!q);
+  drawLegend(xl,yl,xDir,yDir);
+  // The leaderboard table still narrows to the searched player(s).
+  drawTable(q ? cd.filter(d=>d._match) : cd, xl, yl);
 }
 
 // ── SCATTER ──────────────────────────────────────────────────────────────────
-function drawScatter(data,xl,yl,xDir,yDir){
+function drawScatter(data,xl,yl,xDir,yDir,dimUnmatched){
   const svg=document.getElementById("svg-plot");
   const W=900,H=470,PAD={t:26,r:22,b:50,l:54};
   const IW=W-PAD.l-PAD.r, IH=H-PAD.t-PAD.b;
@@ -3911,22 +3927,37 @@ function drawScatter(data,xl,yl,xDir,yDir){
       h+="<text x=\""+x+"\" y=\""+y+"\" text-anchor=\""+ta+"\" class=\"qlbl\" fill=\""+c+"\">"+txt+"</text>";
     });
   }
-  // Name labels — position by performance-adjusted values (px/py)
-  if(NAMES) vld.forEach(d=>{
+  // Name labels — position by performance-adjusted values (px/py). When a
+  // search is active, always label the matched player(s) (even if the NAMES
+  // toggle is off) so the highlighted dot is identified in place.
+  vld.forEach(d=>{
+    const searchHit = dimUnmatched && d._match;
+    if(!(NAMES || searchHit)) return;
+    if(dimUnmatched && !d._match && !NAMES) return;   // don't clutter with dimmed names
     const plotX=sx(d.px), plotY=sy(d.py), col=qcol(d.px,d.py);
-    h+="<text x=\""+plotX+"\" y=\""+(plotY-8)+"\" text-anchor=\"middle\" class=\"namelbl\" fill=\""+col
-      +"\" opacity=\"0.8\">"+(d.name||"").split(" ").slice(-1)[0]+"</text>";
+    const nm = searchHit ? (d.name||"") : (d.name||"").split(" ").slice(-1)[0];
+    h+="<text x=\""+plotX+"\" y=\""+(plotY-(searchHit?11:8))+"\" text-anchor=\"middle\" class=\"namelbl\" fill=\""+col
+      +"\" opacity=\""+(searchHit?"1":(dimUnmatched?"0.25":"0.8"))+"\""+(searchHit?" font-weight=\"700\"":"")+">"+escHTML(nm)+"</text>";
   });
-  // Dots — position and color by performance-adjusted values
+  // Dots — position and color by performance-adjusted values. Positions never
+  // depend on the search box (coords come from the fixed cohort), so a match
+  // stays exactly where it is; search only dims others and rings the match.
   const r=vld.length>150?4:vld.length>80?5:6;
   vld.forEach((d,i)=>{
     const plotX=sx(d.px).toFixed(1), plotY=sy(d.py).toFixed(1), col=qcol(d.px,d.py);
-    h+="<circle cx=\""+plotX+"\" cy=\""+plotY+"\" r=\""+r+"\" fill=\""+col+"\" fill-opacity=\".82\""
-      +" stroke=\""+col+"\" stroke-width=\"1\" stroke-opacity=\".35\""
+    const hit = dimUnmatched && d._match;
+    const dim = dimUnmatched && !d._match;
+    const rr  = hit ? r+3 : r;
+    const fo  = dim ? ".10" : ".82";
+    const so  = dim ? ".08" : (hit ? ".95" : ".35");
+    const sw  = hit ? 2 : 1;
+    if(hit) h+="<circle cx=\""+plotX+"\" cy=\""+plotY+"\" r=\""+(rr+4)+"\" fill=\"none\" stroke=\""+col+"\" stroke-width=\"1.5\" stroke-opacity=\".55\"/>";
+    h+="<circle cx=\""+plotX+"\" cy=\""+plotY+"\" r=\""+rr+"\" fill=\""+col+"\" fill-opacity=\""+fo+"\""
+      +" stroke=\""+col+"\" stroke-width=\""+sw+"\" stroke-opacity=\""+so+"\""
       +" style=\"cursor:pointer;transition:r .1s,fill-opacity .1s\""
       +" onmouseenter=\"showTip(event,"+i+")\" onmouseleave=\"hideTip()\""
-      +" onmouseover=\"this.setAttribute('r','"+(r+2)+"');this.style.fillOpacity='1'\""
-      +" onmouseout=\"this.setAttribute('r','"+r+"');this.style.fillOpacity='.82'\" onclick=\"openPlayerCard(document.getElementById('svg-plot')._vld["+i+"], MODE).catch(e=>console.error('Card error:',e))\"/>";
+      +" onmouseover=\"this.setAttribute('r','"+(rr+2)+"');this.style.fillOpacity='1'\""
+      +" onmouseout=\"this.setAttribute('r','"+rr+"');this.style.fillOpacity='"+fo+"'\" onclick=\"openPlayerCard(document.getElementById('svg-plot')._vld["+i+"], MODE).catch(e=>console.error('Card error:',e))\"/>";
   });
   svg.innerHTML=A11Y+h; svg._vld=vld; svg._xl=xl; svg._yl=yl;
 }
@@ -4044,6 +4075,8 @@ window.addEventListener("load", ()=>{
   }
 });
 
-// Attach search input listener after DOM is ready
-document.getElementById("player-search").addEventListener("input", debounceSearch);
+// Attach search input listener after DOM is ready. The live search input is
+// #srch (wired via its inline oninput=render); this optional #player-search
+// hook is a legacy id — guard it so a missing element doesn't throw on load.
+(function(){ const el=document.getElementById("player-search"); if(el) el.addEventListener("input", debounceSearch); })();
 
