@@ -52,6 +52,42 @@
   @keyframes ps-pulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
 
   .ps-empty { padding:40px 16px; text-align:center; color:var(--fg2,#5e574e); font-size:15px; line-height:1.6; }
+
+  /* Clickable team chips */
+  .ps-clickable { cursor:pointer; border-radius:6px; transition:background .12s; }
+  .ps-clickable:hover { background:rgba(183,71,42,.08); }
+
+  /* Team-detail modal */
+  .ps-modal { position:fixed; inset:0; background:rgba(20,16,12,.55); display:flex; align-items:flex-start;
+    justify-content:center; padding:40px 16px; z-index:100; overflow-y:auto; }
+  .ps-modal[hidden] { display:none; }
+  .ps-modal-box { background:var(--bg,#fbf7ef); border-radius:14px; max-width:520px; width:100%;
+    padding:22px 24px 26px; position:relative; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+  .ps-modal-close { position:absolute; top:12px; right:14px; background:none; border:0; font-size:26px;
+    line-height:1; color:var(--fg3,#8a8278); cursor:pointer; }
+  .ps-td-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .ps-td-logo { width:44px; height:44px; object-fit:contain; }
+  .ps-td-name { font-family:'Playfair Display',serif; font-size:22px; color:var(--fg,#1d1916); }
+  .ps-td-sub { font-family:var(--mono,monospace); font-size:12px; color:var(--fg2,#5e574e); }
+  .ps-next { background:var(--bg-card,#fff); border:1px solid var(--line,rgba(29,25,22,.1)); border-radius:8px;
+    padding:9px 12px; font-family:'Barlow Condensed',system-ui,sans-serif; font-size:14px; color:var(--fg,#1d1916); margin-bottom:14px; }
+  .ps-td-h { font-family:'Barlow Condensed',system-ui,sans-serif; font-size:12px; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--fg2,#5e574e); font-weight:700; margin:16px 0 8px;
+    border-bottom:1px solid var(--line,rgba(29,25,22,.1)); padding-bottom:5px; }
+  .ps-lu { width:100%; border-collapse:collapse; font-family:var(--mono,monospace); font-size:13px; }
+  .ps-lu td { padding:4px 0; border-bottom:1px dashed var(--line,rgba(29,25,22,.08)); }
+  .ps-lu-n { width:22px; color:var(--fg3,#8a8278); }
+  .ps-lu-name { color:var(--fg,#1d1916); }
+  .ps-lu-pos { width:46px; text-align:right; color:var(--fg2,#5e574e); }
+  .ps-note { font-family:'Barlow Condensed',system-ui,sans-serif; font-size:12px; color:var(--fg3,#8a8278); margin-top:6px; letter-spacing:.3px; }
+  .ps-stat-grp { font-family:'Barlow Condensed',system-ui,sans-serif; font-size:12px; letter-spacing:.5px;
+    color:var(--fg2,#5e574e); font-weight:700; margin:10px 0 6px; }
+  .ps-stat-grp em { font-style:normal; color:var(--fg3,#8a8278); font-weight:400; }
+  .ps-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(78px,1fr)); gap:8px; }
+  .ps-stat { background:var(--bg-card,#fff); border:1px solid var(--line,rgba(29,25,22,.08)); border-radius:7px; padding:7px 9px; }
+  .ps-stat-v { display:block; font-family:var(--mono,monospace); font-weight:700; font-size:14px; color:var(--fg,#1d1916); }
+  .ps-stat-l { display:block; font-family:'Barlow Condensed',system-ui,sans-serif; font-size:10px; letter-spacing:.5px;
+    text-transform:uppercase; color:var(--fg3,#8a8278); margin-top:2px; }
 </style>
 </head>
 <body>
@@ -92,6 +128,13 @@
   <footer style="margin-top:30px;font-family:'Barlow Condensed',system-ui,sans-serif;font-size:12px;letter-spacing:.5px;color:var(--fg3,#8a8278)">
     Live data from the public <a href="https://www.mlb.com" target="_blank" rel="noopener">MLB Stats API</a>. Auto-refreshes every 45 seconds. Team logos &copy; MLB.
   </footer>
+</div>
+
+<div id="ps-modal" class="ps-modal" hidden>
+  <div class="ps-modal-box">
+    <button class="ps-modal-close" aria-label="Close">&times;</button>
+    <div id="ps-modal-content"></div>
+  </div>
 </div>
 
 <script src="../js/postseason.js"></script>

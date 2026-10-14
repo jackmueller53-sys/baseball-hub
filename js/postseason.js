@@ -103,12 +103,14 @@
     catch (e) { return ''; }
   }
 
-  // ── Team chip (logo + abbr) ──
+  // ── Team chip (logo + abbr). Clickable → team detail when we have a real id ──
   function teamChip(abbr, id, score, isWin, cls) {
-    var logo = (id && abbr !== 'AL' && abbr !== 'NL')
+    var clickable = id && abbr !== 'AL' && abbr !== 'NL';
+    var logo = clickable
       ? '<img class="ps-logo" src="' + LOGO(id) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">' : '';
     var sc = (score != null && score !== '') ? '<span class="ps-score">' + esc(String(score)) + '</span>' : '';
-    return '<div class="ps-team ' + (isWin ? 'ps-win ' : '') + (cls || '') + '">'
+    var attrs = clickable ? ' data-tid="' + id + '" data-tabbr="' + esc(abbr) + '" role="button" tabindex="0" title="View ' + esc(abbr) + ' lineup + playoff stats"' : '';
+    return '<div class="ps-team ' + (isWin ? 'ps-win ' : '') + (clickable ? 'ps-clickable ' : '') + (cls || '') + '"' + attrs + '>'
       + logo + '<span class="ps-abbr">' + esc(abbr) + '</span>' + sc + '</div>';
   }
 
@@ -221,7 +223,130 @@
     });
   }
 
+  // ══ TEAM DETAIL (projected lineup + postseason statistics) ════════════════
+  function teamSchedURL(tid) {
+    return 'https://statsapi.mlb.com/api/v1/schedule?sportId=1&teamId=' + tid + '&season=' + SEASON
+      + '&gameType=F,D,L,W&hydrate=lineups,probablePitcher,team,linescore'
+      + '&startDate=' + SEASON + '-09-15&endDate=' + SEASON + '-11-15';
+  }
+  function teamStatsURL(tid) {
+    return 'https://statsapi.mlb.com/api/v1/teams/' + tid + '/stats?stats=season&group=hitting,pitching&gameType=P&season=' + SEASON;
+  }
+
+  function sideOf(g, tid) { return g.teams.home.team.id === tid ? 'home' : 'away'; }
+
+  // The projected lineup: prefer the next upcoming game's posted lineup; else
+  // fall back to the most recent completed game's lineup (the likely look).
+  function pickLineup(games, tid) {
+    var up = games.filter(function (g) { return !isFinal(g); })
+      .sort(function (a, b) { return new Date(a.gameDate) - new Date(b.gameDate); });
+    var done = games.filter(isFinal).sort(function (a, b) { return new Date(b.gameDate) - new Date(a.gameDate); });
+    function lineupFrom(g) {
+      var side = sideOf(g, tid);
+      var pl = (g.lineups || {})[side + 'Players'] || [];
+      return pl.length ? { game: g, players: pl } : null;
+    }
+    for (var i = 0; i < up.length; i++) { var r = lineupFrom(up[i]); if (r) return { posted: true, game: up[i], players: r.players }; }
+    for (var j = 0; j < done.length; j++) { var r2 = lineupFrom(done[j]); if (r2) return { posted: false, game: done[j], players: r2.players }; }
+    return null;
+  }
+  function nextGame(games, tid) {
+    return games.filter(function (g) { return !isFinal(g); })
+      .sort(function (a, b) { return new Date(a.gameDate) - new Date(b.gameDate); })[0] || null;
+  }
+
+  function statBlock(statsResp, group) {
+    var blk = (statsResp.stats || []).find(function (b) { return (b.group || {}).displayName === group; });
+    return (blk && blk.splits && blk.splits[0] && blk.splits[0].stat) || null;
+  }
+
+  function renderTeamModal(tid, abbr, sched, stats) {
+    var games = [];
+    (sched.dates || []).forEach(function (dt) { (dt.games || []).forEach(function (g) { games.push(g); }); });
+    var finals = games.filter(isFinal);
+    var wl = { w: 0, l: 0 };
+    finals.forEach(function (g) {
+      var side = sideOf(g, tid), me = g.teams[side];
+      if (me.isWinner === true) wl.w++; else if (me.isWinner === false) wl.l++;
+    });
+    var ng = nextGame(games, tid);
+    var teamName = (games[0] && games[0].teams[sideOf(games[0], tid)].team.name) || abbr;
+
+    // ── Projected lineup ──
+    var lu = pickLineup(games, tid);
+    var luHtml;
+    if (lu) {
+      var rows = lu.players.map(function (p, i) {
+        var pos = (p.primaryPosition || {}).abbreviation || '';
+        return '<tr><td class="ps-lu-n">' + (i + 1) + '</td><td class="ps-lu-name">' + esc(p.fullName || p.useName || '') + '</td>'
+          + '<td class="ps-lu-pos">' + esc(pos) + '</td></tr>';
+      }).join('');
+      var srcNote = lu.posted ? 'confirmed for ' + fmtDate(lu.game.gameDate) : 'projected · based on ' + fmtDate(lu.game.gameDate) + ' game';
+      luHtml = '<table class="ps-lu">' + rows + '</table><div class="ps-note">' + srcNote + '</div>';
+    } else {
+      luHtml = '<div class="ps-note">No lineup available yet.</div>';
+    }
+
+    // ── Next game context ──
+    var ngHtml = '';
+    if (ng) {
+      var opp = sideOf(ng, tid) === 'home' ? 'away' : 'home';
+      var meProb = (ng.teams[sideOf(ng, tid)].probablePitcher || {}).fullName;
+      var oppProb = (ng.teams[opp].probablePitcher || {}).fullName;
+      ngHtml = '<div class="ps-next">' + esc(ng.seriesDescription || '') + ' · Game ' + (ng.seriesGameNumber || '?')
+        + ' · ' + fmtDate(ng.gameDate) + ' ' + fmtTime(ng.gameDate)
+        + ' · ' + (sideOf(ng, tid) === 'home' ? 'vs ' : '@ ') + esc(teamAbbr(ng.teams[opp].team))
+        + (meProb ? '<br><span class="ps-note">Probable: ' + esc(meProb) + (oppProb ? ' vs ' + esc(oppProb) : '') + '</span>' : '') + '</div>';
+    }
+
+    // ── Postseason statistics ──
+    var hit = statBlock(stats, 'hitting'), pit = statBlock(stats, 'pitching');
+    function statRow(label, val) { return '<div class="ps-stat"><span class="ps-stat-v">' + esc(val == null ? '—' : String(val)) + '</span><span class="ps-stat-l">' + label + '</span></div>'; }
+    var statHtml = '';
+    if (hit && hit.gamesPlayed) {
+      statHtml = '<div class="ps-stat-grp">Hitting <em>· ' + hit.gamesPlayed + ' G</em></div><div class="ps-stats">'
+        + statRow('AVG', hit.avg) + statRow('OBP', hit.obp) + statRow('SLG', hit.slg) + statRow('OPS', hit.ops)
+        + statRow('Runs', hit.runs) + statRow('HR', hit.homeRuns)
+        + statRow('RBI', hit.rbi) + statRow('BB', hit.baseOnBalls) + statRow('K', hit.strikeOuts) + '</div>';
+      if (pit) {
+        statHtml += '<div class="ps-stat-grp">Pitching <em>· ' + (pit.inningsPitched || '') + ' IP</em></div><div class="ps-stats">'
+          + statRow('ERA', pit.era) + statRow('WHIP', pit.whip) + statRow('K', pit.strikeOuts)
+          + statRow('BB', pit.baseOnBalls) + statRow('HR', pit.homeRuns) + statRow('SV', pit.saves) + '</div>';
+      }
+    } else {
+      statHtml = '<div class="ps-note">No postseason statistics (team did not reach the ' + SEASON + ' playoffs, or data is not yet posted).</div>';
+    }
+
+    var html = '<div class="ps-td-head">'
+      + '<img class="ps-td-logo" src="' + LOGO(tid) + '" alt="" onerror="this.style.display=\'none\'">'
+      + '<div><div class="ps-td-name">' + esc(teamName) + '</div>'
+      + '<div class="ps-td-sub">' + SEASON + ' Postseason · ' + wl.w + '–' + wl.l + '</div></div></div>'
+      + ngHtml
+      + '<div class="ps-td-h">Projected Lineup</div>' + luHtml
+      + '<div class="ps-td-h">Postseason Statistics</div>' + statHtml;
+    $('ps-modal-content').innerHTML = html;
+  }
+
+  function openTeam(tid, abbr) {
+    var modal = $('ps-modal'); if (!modal) return;
+    $('ps-modal-content').innerHTML = '<div class="ps-note" style="padding:30px;text-align:center">Loading ' + esc(abbr) + '…</div>';
+    modal.hidden = false; document.body.style.overflow = 'hidden';
+    Promise.all([
+      fetch(teamSchedURL(tid), { cache: 'no-store' }).then(function (r) { return r.json(); }),
+      fetch(teamStatsURL(tid), { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return { stats: [] }; }),
+    ]).then(function (res) { renderTeamModal(tid, abbr, res[0], res[1]); })
+      .catch(function (e) { $('ps-modal-content').innerHTML = '<div class="ps-note" style="padding:30px;text-align:center">Could not load team data.<br><small>' + esc(e.message) + '</small></div>'; });
+  }
+  function closeTeam() { var m = $('ps-modal'); if (m) m.hidden = true; document.body.style.overflow = ''; }
+
   function boot() {
+    // Delegated clicks: open team detail from any clickable chip; close controls.
+    document.addEventListener('click', function (e) {
+      var chip = e.target.closest && e.target.closest('.ps-clickable');
+      if (chip) { openTeam(parseInt(chip.getAttribute('data-tid'), 10), chip.getAttribute('data-tabbr')); return; }
+      if (e.target.closest && (e.target.closest('.ps-modal-close') || e.target.id === 'ps-modal')) closeTeam();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeTeam(); });
     refresh();
     if (_timer) clearInterval(_timer);
     _timer = setInterval(refresh, REFRESH_MS);
